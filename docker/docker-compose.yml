@@ -28,15 +28,28 @@ services:
 
 
   redis:
-    image: redis/redis-stack:7.2.0-v11
+    image: redis:8.0.1-alpine
     container_name: redis
     ports:
-      - "6379:6379"
-      - "8001:8001"
+      - 6379:6379
     networks:
       - default
     volumes:
       - .database/redis/data:/data
+    restart: always
+
+  redisinsight:
+    image: redis/redisinsight:2.68
+    container_name: redisinsight
+    ports:
+      - 5540:5540
+    networks:
+      - default
+    environment:
+      - RI_REDIS_HOST=redis
+      - RI_REDIS_PORT=6379
+    depends_on:
+      - redis
     restart: always
 
   # jaeger:
