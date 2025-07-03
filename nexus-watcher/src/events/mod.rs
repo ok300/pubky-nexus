@@ -1,4 +1,5 @@
 use errors::EventProcessorError;
+use moderation::Moderation;
 use nexus_common::db::PubkyClient;
 use nexus_common::types::DynError;
 use pubky_app_specs::{ParsedUri, PubkyAppObject, Resource};
@@ -8,6 +9,7 @@ use tracing::debug;
 
 pub mod errors;
 pub mod handlers;
+pub mod moderation;
 pub mod processor;
 pub mod retry;
 
@@ -24,7 +26,7 @@ impl fmt::Display for EventType {
             EventType::Put => "PUT",
             EventType::Del => "DEL",
         };
-        write!(f, "{}", upper_case_str)
+        write!(f, "{upper_case_str}")
     }
 }
 
@@ -42,7 +44,7 @@ impl Event {
         let parts: Vec<&str> = line.split(' ').collect();
         if parts.len() != 2 {
             return Err(EventProcessorError::InvalidEventLine {
-                message: format!("Malformed event line, {}", line),
+                message: format!("Malformed event line, {line}"),
             }
             .into());
         }
@@ -52,7 +54,7 @@ impl Event {
             "DEL" => EventType::Del,
             other => {
                 return Err(EventProcessorError::InvalidEventLine {
-                    message: format!("Unknown event type: {}", other),
+                    message: format!("Unknown event type: {other}"),
                 }
                 .into())
             }
@@ -63,7 +65,7 @@ impl Event {
         let parsed_uri = ParsedUri::try_from(uri.as_str()).map_err(|e| {
             {
                 EventProcessorError::InvalidEventLine {
-                    message: format!("Cannot parse event URI: {}", e),
+                    message: format!("Cannot parse event URI: {e}"),
                 }
             }
         })?;
@@ -72,7 +74,7 @@ impl Event {
             // Unknown resource
             Resource::Unknown => {
                 return Err(EventProcessorError::InvalidEventLine {
-                    message: format!("Unknown resource in URI: {}", uri),
+                    message: format!("Unknown resource in URI: {uri}"),
                 }
                 .into())
             }
@@ -89,16 +91,16 @@ impl Event {
         }))
     }
 
-    pub async fn handle(self) -> Result<(), DynError> {
+    pub async fn handle(self, moderation: &Moderation) -> Result<(), DynError> {
         match self.event_type {
-            EventType::Put => self.handle_put_event().await,
+            EventType::Put => self.handle_put_event(moderation).await,
             EventType::Del => self.handle_del_event().await,
         }
     }
 
     /// Handles a PUT event by fetching the blob from the homeserver
     /// and using the importer to convert it to a PubkyAppObject.
-    pub async fn handle_put_event(self) -> Result<(), DynError> {
+    pub async fn handle_put_event(self, moderation: &Moderation) -> Result<(), DynError> {
         debug!("Handling PUT event for URI: {}", self.uri);
 
         let response;
@@ -112,7 +114,7 @@ impl Event {
                 Ok(response) => response,
                 Err(e) => {
                     return Err(EventProcessorError::PubkyClientError {
-                        message: format!("{}", e),
+                        message: format!("{e}"),
                     }
                     .into())
                 }
@@ -126,8 +128,7 @@ impl Event {
         let pubky_object = PubkyAppObject::from_resource(&resource, &blob).map_err(|e| {
             EventProcessorError::PubkyClientError {
                 message: format!(
-                    "The importer could not create PubkyAppObject from Uri and Blob: {}",
-                    e
+                    "The importer could not create PubkyAppObject from Uri and Blob: {e}"
                 ),
             }
         })?;
@@ -150,7 +151,11 @@ impl Event {
                 handlers::bookmark::sync_put(user_id, bookmark, bookmark_id).await?
             }
             (PubkyAppObject::Tag(tag), Resource::Tag(tag_id)) => {
-                handlers::tag::sync_put(tag, user_id, tag_id).await?
+                if moderation.should_delete(&tag, user_id.clone()).await {
+                    Moderation::apply_moderation(tag, self.files_path).await?
+                } else {
+                    handlers::tag::sync_put(tag, user_id, tag_id).await?
+                }
             }
             (PubkyAppObject::File(file), Resource::File(file_id)) => {
                 handlers::file::sync_put(file, self.uri, user_id, file_id, self.files_path).await?

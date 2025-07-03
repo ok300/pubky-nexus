@@ -3,11 +3,13 @@ use chrono::Utc;
 use nexus_common::db::PubkyClient;
 use nexus_common::types::DynError;
 use nexus_common::FILES_DIR;
+use nexus_watcher::events::moderation::Moderation;
 use nexus_watcher::events::processor::EventProcessor;
 use nexus_watcher::events::retry::event::RetryEvent;
 use nexus_watcher::events::Event;
 use nexus_watcher::NexusWatcher;
 use pubky::Keypair;
+use pubky_app_specs::PubkyId;
 use pubky_app_specs::{
     traits::TimestampId, PubkyAppFile, PubkyAppFollow, PubkyAppPost, PubkyAppUser,
 };
@@ -40,14 +42,11 @@ impl WatcherTest {
     /// event processor, and other test setup details.
     pub async fn setup() -> Result<Self> {
         if let Err(e) = NexusWatcher::builder().init_test_stack().await {
-            return Err(Error::msg(format!(
-                "could not initialise the stack, {:?}",
-                e
-            )));
+            return Err(Error::msg(format!("could not initialise the stack, {e:?}")));
         }
 
         // testnet initialization is time expensive, we only init one per process
-        let testnet = EphemeralTestnet::start().await.map_err(|e| e)?;
+        let testnet = EphemeralTestnet::start().await?;
 
         let homeserver_id = testnet.homeserver_suite().public_key().to_string();
 
@@ -130,11 +129,7 @@ impl WatcherTest {
         let pubky_client = PubkyClient::get().unwrap();
 
         pubky_client
-            .signup(
-                &keypair,
-                &self.testnet.homeserver_suite().public_key(),
-                None,
-            )
+            .signup(keypair, &self.testnet.homeserver_suite().public_key(), None)
             .await?;
         Ok(())
     }
@@ -146,7 +141,7 @@ impl WatcherTest {
         pubky_client
             .signup(keypair, &self.testnet.homeserver_suite().public_key(), None)
             .await?;
-        let url = format!("pubky://{}/pub/pubky.app/profile.json", user_id);
+        let url = format!("pubky://{user_id}/pub/pubky.app/profile.json");
 
         // Write the user profile in the pubky.app repository
         pubky_client.put(url.as_str()).json(&user).send().await?;
@@ -161,7 +156,7 @@ impl WatcherTest {
     /// To prevent this error after the first sign-up, we will create/update the existing record instead of creating a new one
     pub async fn create_profile(&mut self, user_id: &str, user: &PubkyAppUser) -> Result<String> {
         let pubky_client = PubkyClient::get().unwrap();
-        let url = format!("pubky://{}/pub/pubky.app/profile.json", user_id);
+        let url = format!("pubky://{user_id}/pub/pubky.app/profile.json");
 
         // Write the user profile in the pubky.app repository
         pubky_client.put(url.as_str()).json(&user).send().await?;
@@ -173,7 +168,7 @@ impl WatcherTest {
 
     pub async fn create_post(&mut self, user_id: &str, post: &PubkyAppPost) -> Result<String> {
         let post_id = post.create_id();
-        let url = format!("pubky://{}/pub/pubky.app/posts/{}", user_id, post_id);
+        let url = format!("pubky://{user_id}/pub/pubky.app/posts/{post_id}");
         // Write the post in the pubky.app repository
         PubkyClient::get()
             .unwrap()
@@ -188,7 +183,7 @@ impl WatcherTest {
     }
 
     pub async fn cleanup_user(&mut self, user_id: &str) -> Result<()> {
-        let url = format!("pubky://{}/pub/pubky.app/profile.json", user_id);
+        let url = format!("pubky://{user_id}/pub/pubky.app/profile.json");
         PubkyClient::get()
             .unwrap()
             .delete(url.as_str())
@@ -199,7 +194,7 @@ impl WatcherTest {
     }
 
     pub async fn cleanup_post(&mut self, user_id: &str, post_id: &str) -> Result<()> {
-        let url = format!("pubky://{}/pub/pubky.app/posts/{}", user_id, post_id);
+        let url = format!("pubky://{user_id}/pub/pubky.app/posts/{post_id}");
         PubkyClient::get()
             .unwrap()
             .delete(url.as_str())
@@ -215,7 +210,7 @@ impl WatcherTest {
         file: &PubkyAppFile,
     ) -> Result<(String, String)> {
         let file_id = file.create_id();
-        let url = format!("pubky://{}/pub/pubky.app/files/{}", user_id, file_id);
+        let url = format!("pubky://{user_id}/pub/pubky.app/files/{file_id}");
         PubkyClient::get()
             .unwrap()
             .put(url.as_str())
@@ -242,7 +237,7 @@ impl WatcherTest {
     }
 
     pub async fn cleanup_file(&mut self, user_id: &str, file_id: &str) -> Result<()> {
-        let url = format!("pubky://{}/pub/pubky.app/files/{}", user_id, file_id);
+        let url = format!("pubky://{user_id}/pub/pubky.app/files/{file_id}");
         PubkyClient::get()
             .unwrap()
             .delete(url.as_str())
@@ -256,10 +251,7 @@ impl WatcherTest {
         let follow_relationship = PubkyAppFollow {
             created_at: Utc::now().timestamp_millis(),
         };
-        let follow_url = format!(
-            "pubky://{}/pub/pubky.app/follows/{}",
-            follower_id, followee_id
-        );
+        let follow_url = format!("pubky://{follower_id}/pub/pubky.app/follows/{followee_id}");
         PubkyClient::get()
             .unwrap()
             .put(follow_url.as_str())
@@ -275,7 +267,7 @@ impl WatcherTest {
         let mute_relationship = PubkyAppFollow {
             created_at: Utc::now().timestamp_millis(),
         };
-        let mute_url = format!("pubky://{}/pub/pubky.app/mutes/{}", muter_id, mutee_id);
+        let mute_url = format!("pubky://{muter_id}/pub/pubky.app/mutes/{mutee_id}");
         PubkyClient::get()
             .unwrap()
             .put(mute_url.as_str())
@@ -293,13 +285,16 @@ impl WatcherTest {
 /// * `event_line` - A string slice that represents the URI of the event to be retrieved
 ///   from the homeserver. It contains the event type and the homeserver uri
 pub async fn retrieve_and_handle_event_line(event_line: &str) -> Result<(), DynError> {
-    let event = match Event::parse_event(event_line, PathBuf::from(FILES_DIR)) {
-        Ok(event) => event,
-        Err(_) => None,
+    let event = Event::parse_event(event_line, PathBuf::from(FILES_DIR)).unwrap_or_default();
+
+    // hardcoded tests/utils/moderator_key.pkarr public key used by the moderator user on tests
+    let moderation = Moderation {
+        id: PubkyId::try_from("uo7jgkykft4885n8cruizwy6khw71mnu5pq3ay9i8pw1ymcn85ko")?,
+        tags: Vec::from(["label_to_moderate".to_string()]),
     };
 
     if let Some(event) = event {
-        event.clone().handle().await?
+        event.clone().handle(&moderation).await?
     }
 
     Ok(())
@@ -326,10 +321,10 @@ pub async fn assert_eventually_exists(event_index: &str) {
         match RetryEvent::check_uri(event_index).await {
             Ok(timeframe) => {
                 if timeframe.is_some() {
-                    return ();
+                    return;
                 }
             }
-            Err(e) => panic!("Error while getting index: {:?}", e),
+            Err(e) => panic!("Error while getting index: {e:?}"),
         };
         // Nap time
         tokio::time::sleep(Duration::from_millis(SLEEP_MS)).await;
