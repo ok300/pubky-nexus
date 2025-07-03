@@ -67,11 +67,8 @@ jobs:
       - name: Load Mock Data
         run: cargo run -p nexusd -- db mock
 
-      - name: Run API integration tests
-        run: cargo nextest run -p nexus-webapi --no-fail-fast
-
-      - name: Run WATCHER integration tests
-        run: cargo nextest run -p nexus-watcher --no-fail-fast
+      - name: Run all integration tests
+        run: cargo nextest run --no-fail-fast
 
       - name: Tear down Docker Compose
         if: always()
