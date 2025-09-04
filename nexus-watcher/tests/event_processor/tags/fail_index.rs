@@ -72,8 +72,7 @@ async fn test_homeserver_tag_cannot_add_while_index() -> Result<()> {
     );
 
     // Sync all the previous events
-    let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    test.event_processor.run(shutdown_rx).await.unwrap();
+    test.ensure_event_processing_complete().await.unwrap();
 
     // => Create post tag
     let post = PubkyAppPost {

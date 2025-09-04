@@ -1,10 +1,12 @@
-use anyhow::{anyhow, Error, Result};
+use anyhow::{Error, Result};
 use chrono::Utc;
 use nexus_common::db::PubkyClient;
 use nexus_common::get_files_dir_pathbuf;
+use nexus_common::models::homeserver::Homeserver;
 use nexus_common::types::DynError;
+use nexus_common::utils::create_shutdown_rx;
 use nexus_watcher::events::moderation::Moderation;
-use nexus_watcher::events::processor::EventProcessor;
+use nexus_watcher::events::processor::EventProcessorFactory;
 use nexus_watcher::events::retry::event::RetryEvent;
 use nexus_watcher::events::Event;
 use nexus_watcher::NexusWatcher;
@@ -20,7 +22,7 @@ use tracing::debug;
 /// Struct to hold the setup environment for tests
 pub struct WatcherTest {
     pub testnet: EphemeralTestnet,
-    pub event_processor: EventProcessor,
+    pub event_processor_factory: EventProcessorFactory,
     pub ensure_event_processing: bool,
 }
 
@@ -39,6 +41,7 @@ impl WatcherTest {
     /// # Returns
     /// Returns an instance of `Self` containing the configuration, homeserver,
     /// event processor, and other test setup details.
+    #[cfg(test)]
     pub async fn setup() -> Result<Self> {
         if let Err(e) = NexusWatcher::builder().init_test_stack().await {
             return Err(Error::msg(format!("could not initialise the stack, {e:?}")));
@@ -48,6 +51,8 @@ impl WatcherTest {
         let testnet = EphemeralTestnet::start().await?;
 
         let homeserver_id = testnet.homeserver_suite().public_key().to_string();
+        let config_hs = PubkyId::try_from(&homeserver_id).unwrap();
+        Homeserver::persist_if_unknown(config_hs).await.unwrap();
 
         let client = testnet.pubky_client_builder().build().unwrap();
 
@@ -56,11 +61,9 @@ impl WatcherTest {
             Err(e) => debug!("WatcherTest: {}", e),
         }
 
-        let event_processor = EventProcessor::test(homeserver_id).await;
-
         Ok(Self {
             testnet,
-            event_processor,
+            event_processor_factory: EventProcessorFactory::default_tests(create_shutdown_rx()),
             ensure_event_processing: true,
         })
     }
@@ -73,14 +76,13 @@ impl WatcherTest {
 
     /// Ensures that event processing is completed if it is enabled.
     pub async fn ensure_event_processing_complete(&mut self) -> Result<()> {
-        if self.ensure_event_processing {
-            let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-            self.event_processor
-                .run(shutdown_rx)
-                .await
-                .map_err(|e| anyhow!(e))?;
-            // tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if !self.ensure_event_processing {
+            return Ok(());
         }
+
+        // TODO Error handling
+        self.event_processor_factory.run_processors().await.unwrap();
+
         Ok(())
     }
 
