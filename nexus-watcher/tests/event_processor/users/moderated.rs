@@ -1,8 +1,6 @@
 // tests/users/moderated.rs
 
-use crate::{
-    event_processor::users::utils::find_user_details, event_processor::utils::watcher::WatcherTest,
-};
+use crate::event_processor::{users::utils::find_user_details, utils::watcher::WatcherTest};
 use anyhow::Result;
 use chrono::Utc;
 use pubky::{recovery_file, Keypair};

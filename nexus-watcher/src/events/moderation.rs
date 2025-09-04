@@ -12,6 +12,19 @@ pub struct Moderation {
     pub tags: Vec<String>,
 }
 
+// TODO Expose only for tests
+// #[cfg(test)]
+impl Moderation {
+    /// Default Moderation settings for tests
+    pub(crate) fn default_tests() -> Self {
+        Moderation {
+            id: PubkyId::try_from("uo7jgkykft4885n8cruizwy6khw71mnu5pq3ay9i8pw1ymcn85ko")
+                .expect("Hardcoded test moderation key should be valid"),
+            tags: Vec::from(["label_to_moderate".to_string()]),
+        }
+    }
+}
+
 impl Moderation {
     pub async fn should_delete(&self, tag: &PubkyAppTag, tagger_id: PubkyId) -> bool {
         tagger_id == self.id && self.tags.contains(&tag.label)

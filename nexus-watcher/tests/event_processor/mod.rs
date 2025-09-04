@@ -5,6 +5,7 @@ mod mentions;
 mod mutes;
 mod network;
 mod posts;
+mod processor;
 mod tags;
 mod users;
 pub(crate) mod utils;

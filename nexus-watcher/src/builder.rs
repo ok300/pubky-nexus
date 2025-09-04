@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
-use crate::events::processor::EventProcessor;
+use crate::events::processor::EventProcessorFactory;
 
 use nexus_common::db::{DatabaseConfig, PubkyClient};
 use nexus_common::file::ConfigLoader;
+use nexus_common::models::homeserver::Homeserver;
 use nexus_common::types::DynError;
 use nexus_common::utils::create_shutdown_rx;
 use nexus_common::{DaemonConfig, Level, StackConfig};
@@ -153,7 +154,14 @@ impl NexusWatcher {
         config: WatcherConfig,
     ) -> Result<(), DynError> {
         debug!(?config, "Running NexusWatcher with ");
-        let mut event_processor = EventProcessor::from_config(&config).await?;
+
+        // TODO Do we need to explicitly persit it? If so, where to best call this?
+        // TODO What happens on restart, if configured HS is changed? New one is added? Old one should be removed?
+        // Check if the configured homeserver is persisted in the graph
+        let config_hs = PubkyId::try_from(config.homeserver.as_str())?;
+        Homeserver::persist_if_unknown(config_hs).await?;
+
+        let ev_processor_factory = EventProcessorFactory::from_config(&config, shutdown_rx.clone());
 
         let mut interval = tokio::time::interval(Duration::from_millis(config.watcher_sleep));
 
@@ -165,7 +173,7 @@ impl NexusWatcher {
                 }
                 _ = interval.tick() => {
                     info!("Fetching events…");
-                    if let Err(e) = event_processor.run(shutdown_rx.clone()).await {
+                    if let Err(e) = ev_processor_factory.run_processors().await {
                         error!("Error while processing events: {:?}", e);
                     }
                 }

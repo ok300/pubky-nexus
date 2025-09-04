@@ -6,6 +6,7 @@ use crate::types::DynError;
 
 use pubky_app_specs::PubkyId;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 /// Represents a homeserver with its public key, URL, and cursor.
 #[derive(Serialize, Deserialize, Debug)]
@@ -64,6 +65,26 @@ impl Homeserver {
                 None => Ok(None),
             },
         }
+    }
+
+    // TODO Propagate this in put_homeserver_handler()
+    /// Verifies if homeserver exists, or persists it if missing
+    pub async fn persist_if_unknown(homeserver_id: PubkyId) -> Result<(), DynError> {
+        if Self::get_by_id(homeserver_id.clone()).await?.is_none() {
+            info!("Homeserver {} not found, persisting it", homeserver_id);
+            let homeserver = Homeserver::new(homeserver_id);
+            homeserver.put_to_graph().await?;
+            homeserver.put_to_index().await?;
+        }
+
+        Ok(())
+    }
+
+    /// Retrieves all homeserver IDs from the graph
+    pub async fn get_all_from_graph() -> Result<Vec<String>, DynError> {
+        let query = queries::get::get_all_homeservers();
+        let hs_ids: Option<Vec<String>> = fetch_key_from_graph(query, "homeservers_list").await?;
+        Ok(hs_ids.unwrap_or_default())
     }
 }
 

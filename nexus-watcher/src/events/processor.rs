@@ -11,15 +11,91 @@ use opentelemetry::{global, Context, KeyValue};
 use pubky_app_specs::PubkyId;
 use std::error::Error;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::watch::Receiver;
 use tracing::{debug, error, info};
+
+pub struct EventProcessorFactory {
+    pub limit: u32,
+    pub files_path: PathBuf,
+    pub tracer_name: String,
+    pub moderation: Arc<Moderation>,
+    shutdown_rx: Receiver<bool>,
+}
+
+impl EventProcessorFactory {
+    // TODO #[cfg(test)]
+    pub fn default_tests(shutdown_rx: Receiver<bool>) -> Self {
+        Self {
+            limit: 1000,
+            files_path: get_files_dir_test_pathbuf(),
+            tracer_name: String::from("watcher.test"),
+            moderation: Arc::new(Moderation::default_tests()),
+            shutdown_rx,
+        }
+    }
+}
+
+impl EventProcessorFactory {
+    /// Creates a new factory instance from the provided configuration
+    pub fn from_config(config: &WatcherConfig, shutdown_rx: Receiver<bool>) -> Self {
+        Self {
+            limit: config.events_limit,
+            files_path: config.stack.files_path.clone(),
+            tracer_name: config.name.clone(),
+            moderation: Arc::new(Moderation {
+                id: config.moderation_id.clone(),
+                tags: config.moderated_tags.clone(),
+            }),
+            shutdown_rx,
+        }
+    }
+
+    /// Builds and returns a configured [`EventProcessor`] instance.
+    /// # Arguments
+    /// - `homeserver_id`: The ID of the homeserver to process
+    async fn build(&self, homeserver_id: &str) -> Result<EventProcessor, DynError> {
+        let homeserver_id = PubkyId::try_from(homeserver_id).map_err(DynError::from)?;
+        let homeserver = Homeserver::get_by_id(homeserver_id)
+            .await?
+            .ok_or("Homeserver not found")?;
+
+        Ok(EventProcessor {
+            homeserver,
+            limit: self.limit,
+            files_path: self.files_path.clone(),
+            tracer_name: self.tracer_name.clone(),
+            moderation: self.moderation.clone(),
+            shutdown_rx: self.shutdown_rx.clone(),
+        })
+    }
+
+    pub async fn run_processors(&self) -> Result<(), DynError> {
+        // TODO Error handling
+        let hs_ids = Homeserver::get_all_from_graph()
+            .await
+            .expect("No Homeserver IDs found in graph");
+
+        // TODO Runs should be started in parallel
+        for hs_id in hs_ids {
+            // TODO Error handling
+            let mut e_processor = self.build(&hs_id).await.unwrap();
+
+            // TODO Error handling
+            e_processor.run().await.unwrap();
+        }
+
+        Ok(())
+    }
+}
 
 pub struct EventProcessor {
     pub homeserver: Homeserver,
     limit: u32,
     pub files_path: PathBuf,
     pub tracer_name: String,
-    pub moderation: Moderation,
+    pub moderation: Arc<Moderation>,
+    shutdown_rx: Receiver<bool>,
 }
 
 impl EventProcessor {
@@ -35,16 +111,11 @@ impl EventProcessor {
     /// # Parameters
     /// - `homeserver_id`: A `String` representing the URL of the homeserver to be used in the test environment.
     /// - `tx`: A `RetryManagerSenderChannel` used to handle outgoing messages or events.
+    // TODO Replace method with build() from factory
+    #[cfg(test)]
     pub async fn test(homeserver_id: String) -> Self {
         let id = PubkyId::try_from(&homeserver_id).expect("Homeserver ID should be valid");
         let homeserver = Homeserver::new(id);
-
-        // hardcoded nexus-watcher/tests/utils/moderator_key.pkarr public key used by the moderator user on tests
-        let moderation = Moderation {
-            id: PubkyId::try_from("uo7jgkykft4885n8cruizwy6khw71mnu5pq3ay9i8pw1ymcn85ko")
-                .expect("Hardcoded test moderation key should be valid"),
-            tags: Vec::from(["label_to_moderate".to_string()]),
-        };
 
         info!(
             "Watcher static files PATH during tests are stored inside of the watcher crate: {:?}",
@@ -55,38 +126,40 @@ impl EventProcessor {
             limit: 1000,
             files_path: get_files_dir_test_pathbuf(),
             tracer_name: String::from("watcher.test"),
-            moderation,
+            moderation: Arc::new(Moderation::default_tests()),
+            shutdown_rx: nexus_common::utils::create_shutdown_rx(),
         }
     }
 
-    pub async fn from_config(config: &WatcherConfig) -> Result<Self, DynError> {
-        let homeserver = Homeserver::get_by_id(config.homeserver.clone())
-            .await?
-            .ok_or("Homeserver not found")?;
-        let limit = config.events_limit;
-        let files_path = config.stack.files_path.clone();
-        let tracer_name = config.name.clone();
+    // TODO Needed anywhere?
+    // pub async fn from_config(config: &WatcherConfig) -> Result<Self, DynError> {
+    //     let homeserver = Homeserver::get_by_id(config.homeserver.clone())
+    //         .await?
+    //         .ok_or("Homeserver not found")?;
+    //     let limit = config.events_limit;
+    //     let files_path = config.stack.files_path.clone();
+    //     let tracer_name = config.name.clone();
 
-        let moderation = Moderation {
-            id: config.moderation_id.clone(),
-            tags: config.moderated_tags.clone(),
-        };
+    //     let moderation = Moderation {
+    //         id: config.moderation_id.clone(),
+    //         tags: config.moderated_tags.clone(),
+    //     };
 
-        info!(
-            "Initialized Event Processor for homeserver: {:?}",
-            homeserver
-        );
+    //     info!(
+    //         "Initialized Event Processor for homeserver: {:?}",
+    //         homeserver
+    //     );
 
-        Ok(Self {
-            homeserver,
-            limit,
-            files_path,
-            tracer_name,
-            moderation,
-        })
-    }
+    //     Ok(Self {
+    //         homeserver,
+    //         limit,
+    //         files_path,
+    //         tracer_name,
+    //         moderation,
+    //     })
+    // }
 
-    pub async fn run(&mut self, shutdown_rx: Receiver<bool>) -> Result<(), DynError> {
+    pub async fn run(&mut self) -> Result<(), DynError> {
         let lines = {
             let tracer = global::tracer(self.tracer_name.clone());
             let span = tracer.start("Polling Events");
@@ -104,7 +177,8 @@ impl EventProcessor {
             }
             Ok(Some(lines)) => {
                 info!("Processing {} event lines", lines.len());
-                self.process_event_lines(shutdown_rx, lines).await?;
+                self.process_event_lines(self.shutdown_rx.clone(), lines)
+                    .await?;
             }
         }
 
