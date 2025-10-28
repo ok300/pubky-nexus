@@ -242,10 +242,10 @@ async fn test_stream_posts_by_multiple_tags() -> Result<()> {
         TAG_LABEL_4.to_owned(),
     ];
 
-    // Track if we've seen posts with only some tags (not all)
-    let mut seen_partial_match = false;
+    // Track the maximum number of matching tags seen so far
+    let mut max_matches_seen = valid_tags.len();
 
-    // Iterate over each post and verify ordering: ALL tags first, then ANY tag
+    // Iterate over each post and verify ordering by number of matching tags (N, N-1, N-2, ...)
     for post in post_stream.0 {
         let post_tag_labels: Vec<String> = post.tags.iter().map(|tag| tag.label.clone()).collect();
 
@@ -256,21 +256,22 @@ async fn test_stream_posts_by_multiple_tags() -> Result<()> {
             "Post should be tagged with at least one of the requested tags: {valid_tags:?}, but found: {post_tag_labels:?}"
         );
 
-        // Check if post has all requested tags
-        let has_all_tags = valid_tags.iter().all(|tag| post_tag_labels.contains(tag));
+        // Count how many of the requested tags this post has
+        let matching_count = valid_tags
+            .iter()
+            .filter(|tag| post_tag_labels.contains(tag))
+            .count();
 
-        // If we've already seen a partial match, all subsequent posts should also be partial matches
-        if seen_partial_match {
-            assert!(
-                !has_all_tags,
-                "Posts with ALL tags should come before posts with ANY tags. Found post with all tags after partial match: {post_tag_labels:?}"
-            );
-        }
+        // Ensure posts are ordered by decreasing number of matching tags
+        assert!(
+            matching_count <= max_matches_seen,
+            "Posts should be ordered by number of matching tags (descending). Found post with {} matches after seeing {} matches. Post tags: {post_tag_labels:?}",
+            matching_count,
+            max_matches_seen
+        );
 
-        // Update the flag if this is a partial match
-        if !has_all_tags {
-            seen_partial_match = true;
-        }
+        // Update the maximum matches seen
+        max_matches_seen = matching_count;
     }
 
     Ok(())

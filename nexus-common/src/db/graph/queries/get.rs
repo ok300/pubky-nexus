@@ -731,14 +731,11 @@ pub fn post_stream(
     cypher.push_str("WITH DISTINCT p, author\n");
 
     // Add tag priority when filtering by multiple tags
-    // Priority 0: posts with ALL tags, Priority 1: posts with ANY tag
+    // Priority is based on number of matching tags: N tags = 0, N-1 tags = 1, N-2 tags = 2, etc.
     if tags.is_some() {
         cypher.push_str(
             "WITH p, author, 
-                CASE 
-                    WHEN size([label IN $labels WHERE EXISTS { (p)<-[t:TAGGED]-(:User) WHERE t.label = label }]) = size($labels) THEN 0
-                    ELSE 1
-                END AS tag_priority\n",
+                (size($labels) - size([label IN $labels WHERE EXISTS { (p)<-[t:TAGGED]-(:User) WHERE t.label = label }])) AS tag_priority\n",
         );
     }
 
