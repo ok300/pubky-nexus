@@ -679,7 +679,7 @@ pub fn post_stream(
     if tags.is_some() {
         append_condition(
             &mut cypher,
-            "ALL(label IN $labels WHERE EXISTS { (User)-[:TAGGED {label: label}]->(p) })",
+            "size([label IN $labels WHERE EXISTS { (p)<-[t:TAGGED]-(:User) WHERE t.label = label }]) = size($labels)",
             &mut where_clause_applied,
         );
     }
