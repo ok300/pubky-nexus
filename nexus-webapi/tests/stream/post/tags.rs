@@ -242,16 +242,35 @@ async fn test_stream_posts_by_multiple_tags() -> Result<()> {
         TAG_LABEL_4.to_owned(),
     ];
 
-    // Iterate over each post and check if it contains ALL of the requested tags
+    // Track if we've seen posts with only some tags (not all)
+    let mut seen_partial_match = false;
+
+    // Iterate over each post and verify ordering: ALL tags first, then ANY tag
     for post in post_stream.0 {
         let post_tag_labels: Vec<String> = post.tags.iter().map(|tag| tag.label.clone()).collect();
 
+        // Check if post has at least one of the requested tags
+        let has_any_tag = valid_tags.iter().any(|tag| post_tag_labels.contains(tag));
+        assert!(
+            has_any_tag,
+            "Post should be tagged with at least one of the requested tags: {valid_tags:?}, but found: {post_tag_labels:?}"
+        );
+
+        // Check if post has all requested tags
         let has_all_tags = valid_tags.iter().all(|tag| post_tag_labels.contains(tag));
 
-        assert!(
-            has_all_tags,
-            "Post should be tagged with ALL of the requested tags: {valid_tags:?}, but found: {post_tag_labels:?}"
-        );
+        // If we've already seen a partial match, all subsequent posts should also be partial matches
+        if seen_partial_match {
+            assert!(
+                !has_all_tags,
+                "Posts with ALL tags should come before posts with ANY tags. Found post with all tags after partial match: {post_tag_labels:?}"
+            );
+        }
+
+        // Update the flag if this is a partial match
+        if !has_all_tags {
+            seen_partial_match = true;
+        }
     }
 
     Ok(())

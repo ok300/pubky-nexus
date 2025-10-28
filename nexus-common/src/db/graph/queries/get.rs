@@ -675,11 +675,11 @@ pub fn post_stream(
         cypher.push_str(query);
     }
 
-    // Apply tags - require ALL tags to be present on the post
+    // Apply tags - filter posts that have at least one of the tags
     if tags.is_some() {
         append_condition(
             &mut cypher,
-            "size([label IN $labels WHERE EXISTS { (p)<-[t:TAGGED]-(:User) WHERE t.label = label }]) = size($labels)",
+            "EXISTS { (p)<-[t:TAGGED]-(:User) WHERE t.label IN $labels }",
             &mut where_clause_applied,
         );
     }
@@ -730,13 +730,47 @@ pub fn post_stream(
     // Make unique the posts, cannot be repeated
     cypher.push_str("WITH DISTINCT p, author\n");
 
+    // Add tag priority when filtering by multiple tags
+    // Priority 0: posts with ALL tags, Priority 1: posts with ANY tag
+    if tags.is_some() {
+        cypher.push_str(
+            "WITH p, author, 
+                CASE 
+                    WHEN size([label IN $labels WHERE EXISTS { (p)<-[t:TAGGED]-(:User) WHERE t.label = label }]) = size($labels) THEN 0
+                    ELSE 1
+                END AS tag_priority\n",
+        );
+    }
+
     // Apply StreamSorting
     // Conditionally compute engagement counts only for TotalEngagement sorting
     let order_clause = match sorting {
-        StreamSorting::Timeline => "ORDER BY p.indexed_at DESC".to_string(),
+        StreamSorting::Timeline => {
+            if tags.is_some() {
+                "ORDER BY tag_priority ASC, p.indexed_at DESC".to_string()
+            } else {
+                "ORDER BY p.indexed_at DESC".to_string()
+            }
+        }
         StreamSorting::TotalEngagement => {
             // TODO: These optional matches could potentially be combined/collected to improve performance
-            cypher.push_str(
+            let with_clause = if tags.is_some() {
+                "WITH p, author, tag_priority, 
+                    COUNT(DISTINCT tag) AS tags_count,
+                    COUNT(DISTINCT reply) AS replies_count,
+                    COUNT(DISTINCT repost) AS reposts_count,
+                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
+                "
+            } else {
+                "WITH p, author, 
+                    COUNT(DISTINCT tag) AS tags_count,
+                    COUNT(DISTINCT reply) AS replies_count,
+                    COUNT(DISTINCT repost) AS reposts_count,
+                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
+                "
+            };
+
+            cypher.push_str(&format!(
                 "
                 // Count tags
                 OPTIONAL MATCH (p)<-[tag:TAGGED]-(:User)  
@@ -745,13 +779,10 @@ pub fn post_stream(
                 // Count reposts
                 OPTIONAL MATCH (p)<-[repost:REPOSTED]-(:Post)
 
-                WITH p, author, 
-                    COUNT(DISTINCT tag) AS tags_count,
-                    COUNT(DISTINCT reply) AS replies_count,
-                    COUNT(DISTINCT repost) AS reposts_count,
-                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
+                {}
                 ",
-            );
+                with_clause
+            ));
 
             // Initialise again
             where_clause_applied = false;
@@ -773,7 +804,11 @@ pub fn post_stream(
                 );
             }
 
-            "ORDER BY total_engagement DESC".to_string()
+            if tags.is_some() {
+                "ORDER BY tag_priority ASC, total_engagement DESC".to_string()
+            } else {
+                "ORDER BY total_engagement DESC".to_string()
+            }
         }
     };
 
