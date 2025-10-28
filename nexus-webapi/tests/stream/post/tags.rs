@@ -242,13 +242,15 @@ async fn test_stream_posts_by_multiple_tags() -> Result<()> {
         TAG_LABEL_4.to_owned(),
     ];
 
-    // Iterate over each post and check if it contains any of the requested tags
+    // Iterate over each post and check if it contains ALL of the requested tags
     for post in post_stream.0 {
-        let has_tag = post.tags.iter().any(|tag| valid_tags.contains(&tag.label));
+        let post_tag_labels: Vec<String> = post.tags.iter().map(|tag| tag.label.clone()).collect();
+        
+        let has_all_tags = valid_tags.iter().all(|tag| post_tag_labels.contains(tag));
 
         assert!(
-            has_tag,
-            "Post should be tagged with any of the requested tags: {valid_tags:?}"
+            has_all_tags,
+            "Post should be tagged with ALL of the requested tags: {valid_tags:?}, but found: {post_tag_labels:?}"
         );
     }
 

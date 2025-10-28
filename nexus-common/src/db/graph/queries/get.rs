@@ -675,12 +675,11 @@ pub fn post_stream(
         cypher.push_str(query);
     }
 
-    // Apply tags
+    // Apply tags - require ALL tags to be present on the post
     if tags.is_some() {
-        cypher.push_str("MATCH (User)-[tag:TAGGED]->(p)\n");
         append_condition(
             &mut cypher,
-            "tag.label IN $labels",
+            "ALL(label IN $labels WHERE EXISTS { (User)-[:TAGGED {label: label}]->(p) })",
             &mut where_clause_applied,
         );
     }
