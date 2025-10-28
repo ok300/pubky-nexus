@@ -1,7 +1,7 @@
 use super::UserDetails;
 use crate::db::RedisOps;
 use crate::models::create_zero_score_tuples;
-use crate::{models::traits::Collection, types::DynError};
+use crate::types::DynError;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -117,27 +117,14 @@ impl UserSearch {
         if user_ids.is_empty() {
             return Ok(());
         }
-        let mut records_to_delete: Vec<String> = Vec::with_capacity(user_ids.len());
-        let keys: Vec<Vec<&str>> = user_ids.iter().map(|&id| vec![id]).collect();
-        let users = UserDetails::get_from_index(keys.iter().map(|item| item.as_slice()).collect())
-            .await?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<UserDetails>>();
+        
+        let mut records_to_delete: Vec<String> = Vec::new();
+        
+        // For each user_id, scan the sorted set directly to find ALL entries
+        // This is more reliable than relying on the JSON index which may be stale
         for user_id in user_ids {
-            let existing_username = users
-                .iter()
-                .find(|user| user.id.to_string() == *user_id)
-                .map(|user| user.name.to_lowercase());
-            if let Some(existing_record) = existing_username {
-                let search_key = format!("{existing_record}:{user_id}");
-                records_to_delete.push(search_key);
-            } else {
-                // If user details not found in index, scan the sorted set directly
-                // to find any entries ending with this user_id
-                if let Some(entries) = Self::find_entries_by_user_id(user_id).await? {
-                    records_to_delete.extend(entries);
-                }
+            if let Some(entries) = Self::find_entries_by_user_id(user_id).await? {
+                records_to_delete.extend(entries);
             }
         }
 
