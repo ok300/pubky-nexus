@@ -743,29 +743,16 @@ pub fn post_stream(
     // Conditionally compute engagement counts only for TotalEngagement sorting
     let order_clause = match sorting {
         StreamSorting::Timeline => {
-            if tags.is_some() {
-                "ORDER BY tag_priority ASC, p.indexed_at DESC".to_string()
+            let tag_priority_order = if tags.is_some() {
+                "tag_priority ASC, "
             } else {
-                "ORDER BY p.indexed_at DESC".to_string()
-            }
+                ""
+            };
+            format!("ORDER BY {}p.indexed_at DESC", tag_priority_order)
         }
         StreamSorting::TotalEngagement => {
             // TODO: These optional matches could potentially be combined/collected to improve performance
-            let with_clause = if tags.is_some() {
-                "WITH p, author, tag_priority, 
-                    COUNT(DISTINCT tag) AS tags_count,
-                    COUNT(DISTINCT reply) AS replies_count,
-                    COUNT(DISTINCT repost) AS reposts_count,
-                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
-                "
-            } else {
-                "WITH p, author, 
-                    COUNT(DISTINCT tag) AS tags_count,
-                    COUNT(DISTINCT reply) AS replies_count,
-                    COUNT(DISTINCT repost) AS reposts_count,
-                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
-                "
-            };
+            let tag_priority_field = if tags.is_some() { "tag_priority, " } else { "" };
 
             cypher.push_str(&format!(
                 "
@@ -776,9 +763,13 @@ pub fn post_stream(
                 // Count reposts
                 OPTIONAL MATCH (p)<-[repost:REPOSTED]-(:Post)
 
-                {}
+                WITH p, author, {}
+                    COUNT(DISTINCT tag) AS tags_count,
+                    COUNT(DISTINCT reply) AS replies_count,
+                    COUNT(DISTINCT repost) AS reposts_count,
+                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
                 ",
-                with_clause
+                tag_priority_field
             ));
 
             // Initialise again
@@ -801,11 +792,12 @@ pub fn post_stream(
                 );
             }
 
-            if tags.is_some() {
-                "ORDER BY tag_priority ASC, total_engagement DESC".to_string()
+            let tag_priority_order = if tags.is_some() {
+                "tag_priority ASC, "
             } else {
-                "ORDER BY total_engagement DESC".to_string()
-            }
+                ""
+            };
+            format!("ORDER BY {}total_engagement DESC", tag_priority_order)
         }
     };
 
