@@ -1,0 +1,97 @@
+# GitHub Copilot Agent Configuration for Pubky Nexus
+# This file customizes the GitHub Copilot coding agent environment
+# See: https://docs.github.com/en/enterprise-cloud@latest/copilot/how-tos/use-copilot-agents/coding-agent/customize-the-agent-environment
+
+# Custom instructions for agents working on this project
+instructions: |
+  You are working on Pubky Nexus, a Rust-based social graph aggregation system that bridges Pubky homeservers with social clients.
+  
+  ## Project Architecture
+  - **nexus-webapi**: REST API server for handling client requests
+  - **nexus-watcher**: Event aggregator that listens to homeserver events
+  - **nexus-common**: Shared library crate with database connectors, models, and queries
+  - **nexusd**: Manages execution of Nexus components and database migrations
+  
+  ## Key Dependencies
+  - Neo4j: Graph database for social graph storage
+  - Redis: Caching layer for high-performance queries
+  - Docker Compose: Required for local development (Redis + Neo4j)
+  
+  ## Development Setup
+  Before running tests or the application, ensure Docker services are running:
+  ```bash
+  cd docker && docker compose --env-file .env-sample up -d
+  ```
+  
+  ## Code Conventions
+  - Use Rust stable toolchain
+  - Follow Rust naming conventions (snake_case for functions/variables, PascalCase for types)
+  - Use `anyhow` for error handling in applications
+  - Use `thiserror` for error types in libraries
+  - Prefer async/await with tokio runtime
+  - Keep database logic in nexus-common for reusability
+  - Write integration tests for API endpoints and watcher functionality
+  
+  ## Testing Guidelines
+  - Load mock data before running tests: `cargo run -p nexusd -- db mock`
+  - Use cargo-nextest for running tests
+  - Tests require running Docker services (Neo4j and Redis)
+  - Test individual components: `cargo nextest run -p <package-name>`
+  - Always run `cargo fmt` and `cargo clippy` before committing
+  
+  ## Migration System
+  - Use the Migration Manager for data migrations
+  - Migrations follow phases: Dual Write → Backfill → Cutover → Cleanup
+  - Create new migrations: `cargo run -p nexusd -- db migration new <MigrationName>`
+  - Register migrations in `nexusd/src/migrations/mod.rs`
+  
+  ## Performance Considerations
+  - Most requests should complete in <1ms with Redis caching
+  - Use Redis for hot paths and common queries
+  - Use Neo4j for complex graph queries
+  - Benchmark changes with: `cargo bench -p nexus-webapi`
+
+# Commands for building the project
+build:
+  # Standard build command
+  - cargo build
+  # Build with all features
+  - cargo build --all-features
+  # Build release version
+  - cargo build --release
+
+# Commands for testing
+test:
+  # Run all tests with cargo-nextest
+  - cargo nextest run
+  # Run tests for specific components
+  - cargo nextest run -p nexus-common --no-fail-fast
+  - cargo nextest run -p nexus-webapi --no-fail-fast
+  - cargo nextest run -p nexus-watcher --no-fail-fast
+  # Note: Tests require Docker services (Neo4j, Redis) and mock data loaded
+
+# Commands for linting and formatting
+lint:
+  # Check code formatting
+  - cargo fmt --check
+  # Run clippy with warnings as errors
+  - cargo clippy -- -D warnings
+  # Auto-format code
+  - cargo fmt
+
+# Setup commands to prepare the development environment
+setup:
+  # Start Docker services (Neo4j and Redis)
+  - cd docker && docker compose --env-file .env-sample up -d
+  # Wait for services to be ready
+  - until nc -zv 127.0.0.1 6379; do echo "Waiting for Redis..."; sleep 1; done
+  - until curl -sS http://localhost:7474; do echo "Waiting for Neo4j..."; sleep 1; done
+  # Install cargo-nextest for testing
+  - cargo install cargo-nextest
+  # Load mock data for testing
+  - cargo run -p nexusd -- db mock
+
+# Custom environment variables
+environment:
+  RUST_BACKTRACE: "1"
+  CARGO_TERM_COLOR: "always"
