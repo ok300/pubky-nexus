@@ -245,7 +245,7 @@ async fn test_stream_posts_by_multiple_tags() -> Result<()> {
     // Iterate over each post and check if it contains ALL of the requested tags
     for post in post_stream.0 {
         let post_tag_labels: Vec<String> = post.tags.iter().map(|tag| tag.label.clone()).collect();
-        
+
         let has_all_tags = valid_tags.iter().all(|tag| post_tag_labels.contains(tag));
 
         assert!(
