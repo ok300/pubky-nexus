@@ -132,6 +132,12 @@ impl UserSearch {
             if let Some(existing_record) = existing_username {
                 let search_key = format!("{existing_record}:{user_id}");
                 records_to_delete.push(search_key);
+            } else {
+                // If user details not found in index, scan the sorted set directly
+                // to find any entries ending with this user_id
+                if let Some(entries) = Self::find_entries_by_user_id(user_id).await? {
+                    records_to_delete.extend(entries);
+                }
             }
         }
 
@@ -146,6 +152,51 @@ impl UserSearch {
         .await?;
         Self::remove_from_index_sorted_set(None, &USER_ID_KEY_PARTS, user_ids).await?;
         Ok(())
+    }
+
+    /// Finds all entries in the Sorted:Users:Name set that end with the given user_id
+    async fn find_entries_by_user_id(user_id: &str) -> Result<Option<Vec<String>>, DynError> {
+        // Use ZSCAN to iterate through the sorted set and find entries ending with :user_id
+        use crate::db::get_redis_conn;
+        
+        let index_key = format!("Sorted:{}:{}", USER_NAME_KEY_PARTS[0], USER_NAME_KEY_PARTS[1]);
+        let mut redis_conn = get_redis_conn().await?;
+        let suffix = format!(":{}", user_id);
+        let mut matching_entries = Vec::new();
+        
+        // Use ZSCAN to iterate through all entries
+        let mut cursor = 0u64;
+        loop {
+            let (new_cursor, entries): (u64, Vec<String>) = redis::cmd("ZSCAN")
+                .arg(&index_key)
+                .arg(cursor)
+                .query_async(&mut redis_conn)
+                .await?;
+            
+            // ZSCAN returns alternating member/score pairs, we only want members (even indices)
+            for (i, entry) in entries.iter().enumerate() {
+                if i % 2 == 0 && entry.ends_with(&suffix) {
+                    matching_entries.push(entry.clone());
+                }
+            }
+            
+            cursor = new_cursor;
+            if cursor == 0 {
+                break;
+            }
+        }
+        
+        if matching_entries.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(matching_entries))
+        }
+    }
+
+    /// Deletes all sorted set entries for a given user_id
+    /// This is used when completely removing a user from the system
+    pub async fn delete_from_index(user_id: &str) -> Result<(), DynError> {
+        Self::delete_existing_records(&[user_id]).await
     }
 }
 
