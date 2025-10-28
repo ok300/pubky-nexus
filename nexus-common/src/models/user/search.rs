@@ -118,7 +118,9 @@ impl UserSearch {
             return Ok(());
         }
         
-        let mut records_to_delete: Vec<String> = Vec::new();
+        // Pre-allocate with a reasonable capacity estimate
+        // Each user might have multiple username entries in the sorted set
+        let mut records_to_delete: Vec<String> = Vec::with_capacity(user_ids.len() * 2);
         
         // For each user_id, scan the sorted set directly to find ALL entries
         // This is more reliable than relying on the JSON index which may be stale
