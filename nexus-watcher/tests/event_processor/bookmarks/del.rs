@@ -42,7 +42,7 @@ async fn test_homeserver_unbookmark() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&author_id, &post).await?;
+    let post_id = test.create_post(&author_keypair, &author_id, &post).await?;
 
     // Step 3: Add a bookmark to the post. Before create a new user
     let bookmark = PubkyAppBookmark {
@@ -53,10 +53,10 @@ async fn test_homeserver_unbookmark() -> Result<()> {
     let bookmark_url = bookmark_uri_builder(bookmarker_id.clone(), bookmark_id);
 
     // Put bookmark
-    test.put(&bookmark_url, bookmark).await.unwrap();
+    test.put(&keypair, &bookmark_url, bookmark).await.unwrap();
 
     // Step 4: Delete bookmark
-    test.del(&bookmark_url).await?;
+    test.del(&keypair, &bookmark_url).await?;
 
     // GRAPH_OP: Assert if the event writes the graph
     let result = find_post_bookmark(&author_id, &post_id, &bookmarker_id).await;
@@ -91,9 +91,9 @@ async fn test_homeserver_unbookmark() -> Result<()> {
     assert_eq!(user_counts.bookmarks, 0);
 
     // Cleanup user and post
-    test.cleanup_post(&author_id, &post_id).await?;
-    test.cleanup_user(&bookmarker_id).await?;
-    test.cleanup_user(&author_id).await?;
+    test.cleanup_post(&keypair, &keypair, &author_keypair, &author_id, &post_id).await?;
+    test.cleanup_user(&keypair, &bookmarker_id).await?;
+    test.cleanup_user(&author_keypair, &author_id).await?;
 
     Ok(())
 }

@@ -44,7 +44,7 @@ async fn test_edit_bookmarked_post_notification() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&user_a_id, &post).await?;
+    let post_id = test.create_post(&keypair_a, &user_a_id, &post).await?;
 
     // User B bookmarks User A's post
     let bookmark = PubkyAppBookmark {
@@ -59,7 +59,7 @@ async fn test_edit_bookmarked_post_notification() -> Result<()> {
     let edited_url = post_uri_builder(user_a_id.clone(), post_id.clone());
 
     // Overwrite existing post in the homeserver for the edited one
-    test.put(edited_url.as_str(), &post).await?;
+    test.put(&keypair_a, edited_url.as_str(), &post).await?;
 
     // Verify that User B receives a notification about the edit
     let notifications = Notification::get_by_id(&user_b_id, Pagination::default())

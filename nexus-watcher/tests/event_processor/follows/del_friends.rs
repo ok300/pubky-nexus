@@ -35,9 +35,9 @@ async fn test_homeserver_unfollow_friend() -> Result<()> {
     let followee_id = test.create_user(&followee_keypair, &followee_user).await?;
 
     // Step 3: Follower follows the followee
-    let follow_uri = test.create_follow(&follower_id, &followee_id).await?;
+    let follow_uri = test.create_follow(&follower_keypair, &follower_id, &followee_id).await?;
     // Step 4: Followee follows the follower back. To get notification of unfollow, users has to be friends
-    let follow_back_uri = test.create_follow(&followee_id, &follower_id).await?;
+    let follow_back_uri = test.create_follow(&followee_keypair, &followee_id, &follower_id).await?;
 
     // Step 5: Follower unfollows the followee
     test.del(&follow_uri).await?;
@@ -116,8 +116,8 @@ async fn test_homeserver_unfollow_friend() -> Result<()> {
     );
 
     // Cleanup
-    test.cleanup_user(&follower_id).await?;
-    test.cleanup_user(&followee_id).await?;
+    test.cleanup_user(&follower_keypair, &follower_id).await?;
+    test.cleanup_user(&followee_keypair, &followee_id).await?;
 
     Ok(())
 }

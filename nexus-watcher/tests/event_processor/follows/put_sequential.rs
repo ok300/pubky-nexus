@@ -35,7 +35,7 @@ async fn test_homeserver_sequential_follow() -> Result<()> {
     let bob_id = test.create_user(&bob_keypair, &bob_user).await?;
 
     // Follow followee
-    test.create_follow(&bob_id, &followee_id).await?;
+    test.create_follow(&bob_keypair, &bob_id, &followee_id).await?;
 
     let relationship = Relationship::get_by_id(&followee_id, Some(&bob_id))
         .await
@@ -59,7 +59,7 @@ async fn test_homeserver_sequential_follow() -> Result<()> {
     let alice_id = test.create_user(&alice_keypair, &alice_user).await?;
 
     // Follow followee
-    test.create_follow(&alice_id, &followee_id).await?;
+    test.create_follow(&alice_keypair, &alice_id, &followee_id).await?;
 
     let relationship = Relationship::get_by_id(&followee_id, Some(&alice_id))
         .await
@@ -83,7 +83,7 @@ async fn test_homeserver_sequential_follow() -> Result<()> {
     let carla_id = test.create_user(&carla_keypair, &carla_user).await?;
 
     // Follow followee
-    test.create_follow(&carla_id, &followee_id).await?;
+    test.create_follow(&carla_keypair, &carla_id, &followee_id).await?;
 
     let relationship = Relationship::get_by_id(&followee_id, Some(&carla_id))
         .await
@@ -107,7 +107,7 @@ async fn test_homeserver_sequential_follow() -> Result<()> {
     let danonino_id = test.create_user(&danonino_keypair, &danonino_user).await?;
 
     // Follow followee
-    test.create_follow(&danonino_id, &followee_id).await?;
+    test.create_follow(&danonino_keypair, &danonino_id, &followee_id).await?;
 
     let relationship = Relationship::get_by_id(&followee_id, Some(&danonino_id))
         .await
@@ -132,7 +132,7 @@ async fn test_homeserver_sequential_follow() -> Result<()> {
     assert_eq!(followee_user_count.friends, 0);
 
     // Follow Danonino
-    test.create_follow(&followee_id, &danonino_id).await?;
+    test.create_follow(&followee_keypair, &followee_id, &danonino_id).await?;
 
     let relationship = Relationship::get_by_id(&danonino_id, Some(&followee_id))
         .await
@@ -168,7 +168,7 @@ async fn test_homeserver_sequential_follow() -> Result<()> {
     let enzo_id = test.create_user(&enzo_keypair, &enzo_user).await?;
 
     // Follow Enzo
-    test.create_follow(&followee_id, &enzo_id).await?;
+    test.create_follow(&followee_keypair, &followee_id, &enzo_id).await?;
 
     let relationship = Relationship::get_by_id(&enzo_id, Some(&followee_id))
         .await
@@ -203,12 +203,12 @@ async fn test_homeserver_sequential_follow() -> Result<()> {
     assert_eq!(followee_user_count.friends, 1);
 
     // Cleanup
-    test.cleanup_user(&followee_id).await?;
-    test.cleanup_user(&bob_id).await?;
-    test.cleanup_user(&alice_id).await?;
-    test.cleanup_user(&carla_id).await?;
-    test.cleanup_user(&danonino_id).await?;
-    test.cleanup_user(&enzo_id).await?;
+    test.cleanup_user(&followee_keypair, &followee_id).await?;
+    test.cleanup_user(&bob_keypair, &bob_id).await?;
+    test.cleanup_user(&alice_keypair, &alice_id).await?;
+    test.cleanup_user(&carla_keypair, &carla_id).await?;
+    test.cleanup_user(&danonino_keypair, &danonino_id).await?;
+    test.cleanup_user(&enzo_keypair, &enzo_id).await?;
     // TODO: Clear Follows
 
     Ok(())

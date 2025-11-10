@@ -48,7 +48,7 @@ async fn test_homeserver_tag_post_notification() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&author_id, &post).await?;
+    let post_id = test.create_post(&author_keypair, &author_id, &post).await?;
 
     // Tagger adds a tag to the post
     let label = "interesting";
@@ -62,7 +62,7 @@ async fn test_homeserver_tag_post_notification() -> Result<()> {
     let tag_url = tag_uri_builder(tagger_id.clone(), tag.create_id());
 
     // Put tag
-    test.put(tag_url.as_str(), tag).await?;
+    test.put(&author_keypair, tag_url.as_str(), tag).await?;
 
     // GRAPH_OP
     let post_tag = find_post_tag(&author_id, &post_id, label)
@@ -109,9 +109,9 @@ async fn test_homeserver_tag_post_notification() -> Result<()> {
     }
 
     // Cleanup
-    test.cleanup_post(&author_id, &post_id).await?;
-    test.cleanup_user(&author_id).await?;
-    test.cleanup_user(&tagger_id).await?;
+    test.cleanup_post(&author_keypair, &author_keypair, &author_keypair, &author_id, &post_id).await?;
+    test.cleanup_user(&author_keypair, &author_id).await?;
+    test.cleanup_user(&tagger_keypair, &tagger_id).await?;
 
     Ok(())
 }

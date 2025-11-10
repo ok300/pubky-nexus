@@ -26,7 +26,7 @@ async fn test_homeserver_follow_cannot_index() -> Result<()> {
     };
     let follower_id = test.create_user(&follower_keypair, &follower_user).await?;
 
-    test.create_follow(&follower_id, &followee_id).await?;
+    test.create_follow(&follower_keypair, &follower_id, &followee_id).await?;
 
     let follow_url = follow_uri_builder(follower_id, followee_id.clone());
 

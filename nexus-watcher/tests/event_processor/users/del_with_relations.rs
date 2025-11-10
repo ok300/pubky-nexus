@@ -34,10 +34,10 @@ async fn test_delete_user_with_relationships() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&user_id, &post).await?;
+    let post_id = test.create_post(&keypair, &user_id, &post).await?;
 
     // Delete the user
-    test.cleanup_user(&user_id).await?;
+    test.cleanup_user(&keypair, &user_id).await?;
 
     // Fetch user details; should be updated to "[DELETED]"
     let user_details = find_user_details(&user_id).await?;
@@ -78,11 +78,11 @@ async fn test_delete_user_with_relationships() -> Result<()> {
     );
 
     // Now delete the user's post
-    test.cleanup_post(&user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
 
     // Write and delete the user again; this time it should be fully removed
-    test.create_profile(&user_id, &user).await?;
-    test.cleanup_user(&user_id).await?;
+    test.create_profile(&keypair, &user_id, &user).await?;
+    test.cleanup_user(&keypair, &user_id).await?;
 
     // Attempt to find user details; should not exist
     let user_details_result = find_user_details(&user_id).await;
@@ -122,7 +122,7 @@ async fn test_delete_user_with_relationships() -> Result<()> {
     let blob_id = blob.create_id();
     let blob_url = blob_uri_builder(user_with_id.clone(), blob_id);
 
-    test.create_file_from_body(blob_url.as_str(), blob.0.clone())
+    test.create_file_from_body(&keypair, blob_url.as_str(), blob.0.clone())
         .await?;
 
     // Act
@@ -134,7 +134,7 @@ async fn test_delete_user_with_relationships() -> Result<()> {
         created_at: Utc::now().timestamp_millis(),
     };
 
-    let (file_id, image_url) = test.create_file(&user_with_id, &file).await?;
+    let (file_id, image_url) = test.create_file(&keypair, &user_with_id, &file).await?;
 
     user_with = PubkyAppUser {
         bio: Some("test_delete_user_with_relationships".to_string()),
@@ -146,7 +146,7 @@ async fn test_delete_user_with_relationships() -> Result<()> {
         name: "Watcher:UserDeleteWith:UserWith".to_string(),
         status: Some("Zombie soon".to_string()),
     };
-    let _ = test.create_profile(&user_with_id, &user_with).await?;
+    let _ = test.create_profile(&keypair, &user_with_id, &user_with).await?;
 
     // Create a post to establish a relationship
     let post_b = PubkyAppPost {
@@ -156,10 +156,10 @@ async fn test_delete_user_with_relationships() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_b_id = test.create_post(&user_with_id, &post_b).await?;
+    let post_b_id = test.create_post(&keypair, &user_with_id, &post_b).await?;
 
     // Delete the user
-    test.cleanup_user(&user_with_id).await?;
+    test.cleanup_user(&keypair, &user_with_id).await?;
 
     // Fetch user details; should be updated to "[DELETED]"
     let user_details = find_user_details(&user_with_id).await?;
@@ -202,13 +202,13 @@ async fn test_delete_user_with_relationships() -> Result<()> {
     );
 
     // Now delete the user's post
-    test.cleanup_post(&user_with_id, &post_b_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &user_with_id, &post_b_id).await?;
 
     // Write and delete the user again; this time it should be fully removed
-    test.create_profile(&user_with_id, &user_with).await?;
-    test.cleanup_user(&user_with_id).await?;
+    test.create_profile(&keypair, &user_with_id, &user_with).await?;
+    test.cleanup_user(&keypair, &user_with_id).await?;
     // Delete the file
-    test.cleanup_file(&user_with_id, &file_id).await?;
+    test.cleanup_file(&keypair, &keypair, &keypair, &user_with_id, &file_id).await?;
 
     // Attempt to find user details; should not exist
     let user_details_result = find_user_details(&user_with_id).await;

@@ -91,7 +91,7 @@ async fn test_homeserver_user_put_event() -> Result<()> {
     assert_eq!(influencer_score.unwrap(), 0);
 
     // Cleanup
-    test.cleanup_user(&user_id).await?;
+    test.cleanup_user(&keypair, &user_id).await?;
 
     // Assert the new user does not exist in Nexus
     // let result = UserView::get_by_id(&user_id, None).await.unwrap();

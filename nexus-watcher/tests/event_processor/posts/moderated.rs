@@ -33,7 +33,7 @@ async fn test_moderated_post_lifecycle() -> Result<()> {
         attachments: None,
     };
 
-    let post_id = test.create_post(&user_id, &post).await?;
+    let post_id = test.create_post(&keypair, &user_id, &post).await?;
 
     // 2. Confirm this post does exist
     let post_details = find_post_details(&user_id, &post_id).await.unwrap();

@@ -35,7 +35,7 @@ async fn test_homeserver_del_post_with_attachments() -> Result<()> {
         let blob_id = blob.create_id();
         let blob_url = blob_uri_builder(user_id.clone(), blob_id);
 
-        test.create_file_from_body(blob_url.as_str(), blob.0.clone())
+        test.create_file_from_body(&keypair, blob_url.as_str(), blob.0.clone())
             .await?;
         test.ensure_event_processing_complete().await?;
 
@@ -46,7 +46,7 @@ async fn test_homeserver_del_post_with_attachments() -> Result<()> {
             size: blob.0.len(),
             created_at: Utc::now().timestamp_millis(),
         };
-        let (file_id, file_url) = test.create_file(&user_id, &file).await?;
+        let (file_id, file_url) = test.create_file(&keypair, &user_id, &file).await?;
         file_urls.push(file_url);
         file_ids.push(file_id);
     }
@@ -59,7 +59,7 @@ async fn test_homeserver_del_post_with_attachments() -> Result<()> {
         attachments: Some(file_urls.clone()),
     };
 
-    let post_id = test.create_post(&user_id, &post).await?;
+    let post_id = test.create_post(&keypair, &user_id, &post).await?;
 
     let post_details = find_post_details(&user_id, &post_id).await.unwrap();
 
@@ -68,10 +68,10 @@ async fn test_homeserver_del_post_with_attachments() -> Result<()> {
     assert_eq!(post_details.attachments, Some(file_urls));
 
     // Cleanup
-    test.cleanup_post(&user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
     // If the post has attachments, it also needs to send DEL event
-    test.cleanup_file(&user_id, &file_ids[0]).await?;
-    test.cleanup_file(&user_id, &file_ids[1]).await?;
+    test.cleanup_file(&keypair, &keypair, &keypair, &user_id, &file_ids[0]).await?;
+    test.cleanup_file(&keypair, &keypair, &keypair, &user_id, &file_ids[1]).await?;
 
     for file_id in file_ids {
         let files = FileDetails::get_by_ids(

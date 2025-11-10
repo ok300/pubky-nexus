@@ -20,9 +20,9 @@ async fn test_follow_on_unknown_homeserver() -> Result<()> {
 
     // Register the followee PK in the new homeserver
     // We only need the record mapping, not necessarily the profile.json being uploaded
-    PubkyClient::get()?
-        .signup(&followee_kp, &followee_hs_pk, None)
-        .await?;
+    let pubky_client = PubkyClient::get()?;
+    let signer = pubky_client.signer(followee_kp.clone());
+    signer.signup(&followee_hs_pk, None).await?;
 
     // Create follower user
     let follower_kp = Keypair::random();
@@ -39,7 +39,7 @@ async fn test_follow_on_unknown_homeserver() -> Result<()> {
         .unwrap();
 
     // Follow the followee
-    test.create_follow(&follower_id, &followee_id).await?;
+    test.create_follow(&follower_kp, &follower_id, &followee_id).await?;
 
     assert!(Homeserver::get_by_id(followee_hs_id)
         .await

@@ -35,7 +35,7 @@ async fn test_homeserver_follow_friend() -> Result<()> {
     let bob_id = test.create_user(&bob_keypair, &bob_user).await?;
 
     // Follow Alice
-    test.create_follow(&bob_id, &alice_id).await?;
+    test.create_follow(&bob_keypair, &bob_id, &alice_id).await?;
 
     let relationship = Relationship::get_by_id(&alice_id, Some(&bob_id))
         .await
@@ -63,7 +63,7 @@ async fn test_homeserver_follow_friend() -> Result<()> {
     assert_eq!(bob_user_count.friends, 0);
 
     // Follow Bob
-    test.create_follow(&alice_id, &bob_id).await?;
+    test.create_follow(&alice_keypair, &alice_id, &bob_id).await?;
 
     let relationship = Relationship::get_by_id(&bob_id, Some(&alice_id))
         .await
@@ -95,8 +95,8 @@ async fn test_homeserver_follow_friend() -> Result<()> {
     assert_eq!(bob_user_count.friends, 1);
 
     // Cleanup
-    test.cleanup_user(&alice_id).await?;
-    test.cleanup_user(&bob_id).await?;
+    test.cleanup_user(&alice_keypair, &alice_id).await?;
+    test.cleanup_user(&bob_keypair, &bob_id).await?;
     // TODO: Clear Follows
 
     Ok(())

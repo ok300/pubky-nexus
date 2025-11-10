@@ -148,7 +148,7 @@ async fn test_homeserver_put_tag_post() -> Result<()> {
     );
 
     // Cleanup user and post
-    test.cleanup_post(&tagger_user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &tagger_user_id, &post_id).await?;
     test.cleanup_user(&tagger_user_id).await?;
 
     Ok(())
@@ -208,7 +208,7 @@ async fn test_homeserver_put_tag_post_unique_count() -> Result<()> {
     assert_eq!(post_counts_after_step_3.tags, 1);
     assert_eq!(post_counts_after_step_3.unique_tags, 1);
 
-    test.cleanup_post(&tagger_user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &tagger_user_id, &post_id).await?;
     test.cleanup_user(&tagger_user_id).await?;
 
     Ok(())

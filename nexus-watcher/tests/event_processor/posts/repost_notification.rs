@@ -32,7 +32,7 @@ async fn test_homeserver_post_repost_notification() -> Result<()> {
         attachments: None,
     };
 
-    let alice_post_id = test.create_post(&alice_id, &parent_post).await?;
+    let alice_post_id = test.create_post(&alice_keypair, &alice_id, &parent_post).await?;
 
     let parent_uri = post_uri_builder(alice_id.clone(), alice_post_id.clone());
 
@@ -47,7 +47,7 @@ async fn test_homeserver_post_repost_notification() -> Result<()> {
         attachments: None,
     };
 
-    let alice_reply_id = test.create_post(&alice_id, &alice_repost).await?;
+    let alice_reply_id = test.create_post(&alice_keypair, &alice_id, &alice_repost).await?;
 
     // Verify that alice does not get a REPLY notification
     let notifications = Notification::get_by_id(&alice_id, Pagination::default())
@@ -83,7 +83,7 @@ async fn test_homeserver_post_repost_notification() -> Result<()> {
         attachments: None,
     };
 
-    let bob_reply_id = test.create_post(&bob_id, &bob_repost).await?;
+    let bob_reply_id = test.create_post(&bob_keypair, &bob_id, &bob_repost).await?;
 
     // Verify that alice gets a REPLY notification
     let notifications = Notification::get_by_id(&alice_id, Pagination::default())
@@ -126,12 +126,12 @@ async fn test_homeserver_post_repost_notification() -> Result<()> {
     }
 
     // // TODO: Impl DEL post. Assert the reply does not exist in Nexus
-    test.cleanup_post(&alice_id, &alice_reply_id).await?;
-    test.cleanup_post(&bob_id, &bob_reply_id).await?;
+    test.cleanup_post(&alice_keypair, &alice_keypair, &alice_keypair, &alice_id, &alice_reply_id).await?;
+    test.cleanup_post(&alice_keypair, &alice_keypair, &alice_keypair, &bob_id, &bob_reply_id).await?;
 
     // Cleanup
-    test.cleanup_user(&alice_id).await?;
-    test.cleanup_post(&alice_id, &alice_post_id).await?;
+    test.cleanup_user(&alice_keypair, &alice_id).await?;
+    test.cleanup_post(&alice_keypair, &alice_keypair, &alice_keypair, &alice_id, &alice_post_id).await?;
 
     Ok(())
 }

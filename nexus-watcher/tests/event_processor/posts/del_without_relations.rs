@@ -45,7 +45,7 @@ async fn test_delete_post_without_relationships() -> Result<()> {
     let post_id = test.create_post(&user_id, &post).await?;
 
     // Delete the post using the event handler
-    test.cleanup_post(&user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &keypair, &user_id, &post_id).await?;
 
     // Attempt to find post details; should not exist in INDEX + GRAPH
     // Post:Details:user_id:post_id
@@ -163,7 +163,7 @@ async fn test_delete_post_that_reposted() -> Result<()> {
     let repost_id = test.create_post(&user_id, &repost).await?;
 
     // Delete the post using the event handler
-    test.cleanup_post(&user_id, &repost_id).await?;
+    test.cleanup_post(&keypair, &keypair, &user_id, &repost_id).await?;
 
     // GRAPH_OP + CACHE_OP: Assert relationship does not exist in the data layer
 
@@ -291,7 +291,7 @@ async fn test_delete_post_that_replied() -> Result<()> {
     let reply_id = test.create_post(&user_id, &reply).await?;
 
     // Delete the post using the event handler
-    test.cleanup_post(&user_id, &reply_id).await?;
+    test.cleanup_post(&keypair, &keypair, &user_id, &reply_id).await?;
 
     // GRAPH_OP + CACHE_OP: Assert relationship does not exist in the data layer
     // PARENT post counts should have reposts counts 0 once again

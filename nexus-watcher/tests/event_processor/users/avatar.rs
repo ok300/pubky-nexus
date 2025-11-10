@@ -35,7 +35,7 @@ async fn test_user_avatar_endpoint() -> Result<()> {
         user_id,
         blob.create_id()
     );
-    test.create_file_from_body(blob_url.as_str(), blob.0.clone())
+    test.create_file_from_body(&keypair, blob_url.as_str(), blob.0.clone())
         .await?;
 
     // 5. Create a new file referencing that blob
@@ -46,7 +46,7 @@ async fn test_user_avatar_endpoint() -> Result<()> {
         size: image_size as i64,
         created_at: Utc::now().timestamp_millis(),
     };
-    let (file_id, _event_id) = test.create_file(&user_id, &file).await?;
+    let (file_id, _event_id) = test.create_file(&keypair, &user_id, &file).await?;
 
     // 6. Update the user so that its `image` field references
     let updated_user = PubkyAppUser {
@@ -56,7 +56,7 @@ async fn test_user_avatar_endpoint() -> Result<()> {
         status: user.status.clone(),
         image: Some(format!("pubky://{user_id}/pub/pubky.app/files/{file_id}")),
     };
-    test.create_profile(&user_id, &updated_user).await?;
+    test.create_profile(&keypair, &user_id, &updated_user).await?;
 
     // 7. Issue a GET to the new `/avatar` route using your test client
     let client = httpc_test::new_client(crate::service::utils::host_url().await)?;

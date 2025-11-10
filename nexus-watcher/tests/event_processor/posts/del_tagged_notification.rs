@@ -44,7 +44,7 @@ async fn test_delete_tagged_post_notification() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&user_a_id, &post).await?;
+    let post_id = test.create_post(&keypair_a, &user_a_id, &post).await?;
 
     // User B tags User A's post
     let label = "merkle_tree";
@@ -60,7 +60,7 @@ async fn test_delete_tagged_post_notification() -> Result<()> {
     test.put(&tag_url, tag).await?;
 
     // User A deletes their post
-    test.cleanup_post(&user_a_id, &post_id).await?;
+    test.cleanup_post(&keypair_a, &keypair_a, &keypair_a, &user_a_id, &post_id).await?;
 
     // Verify that User B receives a notification about the deletion
     let notifications = Notification::get_by_id(&user_b_id, Pagination::default())

@@ -32,7 +32,7 @@ async fn test_homeserver_bookmark() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&user_id, &post).await?;
+    let post_id = test.create_post(&keypair, &user_id, &post).await?;
 
     // Step 3: Add a bookmark to the post. Before create a new user
     let bookmark = PubkyAppBookmark {
@@ -80,8 +80,8 @@ async fn test_homeserver_bookmark() -> Result<()> {
     assert_eq!(bookmark.id, bookmark_id, "Bookmark ids does not match");
 
     // Cleanup user and post
-    test.cleanup_post(&user_id, &post_id).await?;
-    test.cleanup_user(&user_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
+    test.cleanup_user(&keypair, &user_id).await?;
 
     Ok(())
 }

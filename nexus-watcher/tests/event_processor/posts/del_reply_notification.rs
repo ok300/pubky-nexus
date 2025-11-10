@@ -41,7 +41,7 @@ async fn test_delete_post_that_replied_notification() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&poster_id, &post).await?;
+    let post_id = test.create_post(&keypair, &poster_id, &post).await?;
 
     // Create a reply
     let reply = PubkyAppPost {
@@ -51,10 +51,10 @@ async fn test_delete_post_that_replied_notification() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let reply_id = test.create_post(&replier_id, &reply).await?;
+    let reply_id = test.create_post(&keypair, &replier_id, &reply).await?;
 
     // Delete the reply
-    test.cleanup_post(&replier_id, &reply_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &replier_id, &reply_id).await?;
 
     // Verify that the poster gets the correct notification
     let notifications = Notification::get_by_id(&poster_id, Pagination::default())

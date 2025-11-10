@@ -23,10 +23,10 @@ async fn test_homeserver_post_without_user() -> Result<()> {
         attachments: None,
     };
 
-    let post_id = test.create_post(&user_id, &post).await?;
+    let post_id = test.create_post(&keypair, &user_id, &post).await?;
 
     // Delete the post using the event handler
-    test.cleanup_post(&user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
 
     Ok(())
 }
