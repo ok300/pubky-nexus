@@ -35,7 +35,7 @@ async fn test_homeserver_reply_engagement_control() -> Result<()> {
         attachments: None,
     };
 
-    let parent_post_id = test.create_post(&author_id, &parent_post).await?;
+    let parent_post_id = test.create_post(&keypair, &author_id, &parent_post).await?;
 
     // Create reply
     let parent_uri = post_uri_builder(author_id.clone(), parent_post_id);
@@ -48,7 +48,7 @@ async fn test_homeserver_reply_engagement_control() -> Result<()> {
         attachments: None,
     };
 
-    let reply_id = test.create_post(&author_id, &reply).await?;
+    let reply_id = test.create_post(&keypair, &author_id, &reply).await?;
 
     // Check if reply post is not in global timeline index: Sorted:Posts:Global:Timeline:user_id:post_id
     let global_timeline = check_member_global_timeline_user_post(&author_id, &reply_id)
@@ -70,7 +70,7 @@ async fn test_homeserver_reply_engagement_control() -> Result<()> {
         attachments: None,
     };
 
-    let reply_reply_id = test.create_post(&author_id, &reply_of_reply).await?;
+    let reply_reply_id = test.create_post(&keypair, &author_id, &reply_of_reply).await?;
 
     // Check if reply post is not in total engagement index: Sorted:Posts:Global:TotalEngagement:user_id:post_id
     let total_engagement = check_member_total_engagement_user_posts(&[&author_id, &reply_id])
@@ -101,7 +101,7 @@ async fn test_homeserver_reply_engagement_control() -> Result<()> {
         attachments: None,
     };
 
-    let reply_repost_id = test.create_post(&author_id, &reply_repost).await?;
+    let reply_repost_id = test.create_post(&keypair, &author_id, &reply_repost).await?;
 
     // Check if reply post is not in total engagement index: Sorted:Posts:Global:TotalEngagement:user_id:post_id
     let total_engagement = check_member_total_engagement_user_posts(&[&author_id, &reply_id])
@@ -152,7 +152,7 @@ async fn test_homeserver_reply_engagement_control() -> Result<()> {
 
     // Start deleting the posts and tags added to the reply
     // Delete the reply
-    test.cleanup_post(&author_id, &reply_reply_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &author_id, &reply_reply_id).await?;
 
     // Check if reply post is not in total engagement index: Sorted:Posts:Global:TotalEngagement:user_id:post_id
     let total_engagement = check_member_total_engagement_user_posts(&[&author_id, &reply_id])
@@ -163,7 +163,7 @@ async fn test_homeserver_reply_engagement_control() -> Result<()> {
         "Replies score cannot be decremented in the total engagement list after deleting a reply"
     );
 
-    test.cleanup_post(&author_id, &reply_repost_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &author_id, &reply_repost_id).await?;
 
     // Check if reply post is not in total engagement index: Sorted:Posts:Global:TotalEngagement:user_id:post_id
     let total_engagement = check_member_total_engagement_user_posts(&[&author_id, &reply_id])

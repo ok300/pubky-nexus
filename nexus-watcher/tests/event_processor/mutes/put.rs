@@ -57,8 +57,8 @@ async fn test_homeserver_put_mute() -> Result<()> {
     );
 
     // Cleanup
-    test.cleanup_user(&muter_id).await?;
-    test.cleanup_user(&mutee_id).await?;
+    test.cleanup_user(&muter_keypair, &muter_id).await?;
+    test.cleanup_user(&mutee_keypair, &mutee_id).await?;
 
     Ok(())
 }

@@ -49,7 +49,7 @@ async fn test_homeserver_del_tag_post() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&author_user_id, &post).await?;
+    let post_id = test.create_post(&author_keypair, &author_user_id, &post).await?;
 
     // Step 3: Tagger user adds a tag to the his own post
     let label = "antonymous";
@@ -137,9 +137,9 @@ async fn test_homeserver_del_tag_post() -> Result<()> {
     assert!(tag_timeline.is_none());
 
     // Cleanup user and post
-    test.cleanup_post(&author_user_id, &post_id).await?;
-    test.cleanup_user(&author_user_id).await?;
-    test.cleanup_user(&tagger_user_id).await?;
+    test.cleanup_post(&tagger_keypair, &tagger_keypair, &tagger_keypair, &author_user_id, &post_id).await?;
+    test.cleanup_user(&author_keypair, &author_user_id).await?;
+    test.cleanup_user(&tagger_keypair, &tagger_user_id).await?;
 
     Ok(())
 }

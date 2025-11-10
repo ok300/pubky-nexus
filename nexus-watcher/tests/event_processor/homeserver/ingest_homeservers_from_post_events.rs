@@ -65,8 +65,8 @@ async fn test_reply_to_post_on_unknown_homeserver() -> Result<()> {
 
     // Cleanup
     test.cleanup_user(&reply_author_id).await?;
-    test.cleanup_post(&reply_author_id, &reply_id).await?;
-    test.cleanup_post(&reply_author_id, &parent_post_id).await?;
+    test.cleanup_post(&parent_author_kp, &parent_author_kp, &reply_author_id, &reply_id).await?;
+    test.cleanup_post(&parent_author_kp, &parent_author_kp, &reply_author_id, &parent_post_id).await?;
 
     Ok(())
 }
@@ -131,8 +131,8 @@ async fn test_repost_of_post_on_unknown_homeserver() -> Result<()> {
 
     // Cleanup
     test.cleanup_user(&repost_author_id).await?;
-    test.cleanup_post(&repost_author_id, &repost_id).await?;
-    test.cleanup_post(&repost_author_id, &original_post_id)
+    test.cleanup_post(&parent_author_kp, &parent_author_kp, &repost_author_id, &repost_id).await?;
+    test.cleanup_post(&parent_author_kp, &parent_author_kp, &repost_author_id, &original_post_id)
         .await?;
 
     Ok(())
@@ -194,7 +194,7 @@ async fn test_post_and_mention_users_on_unknown_homeserver() -> Result<()> {
 
     // Cleanup
     test.cleanup_user(&post_author_id).await?;
-    test.cleanup_post(&post_author_id, &post_id).await?;
+    test.cleanup_post(&parent_author_kp, &parent_author_kp, &post_author_id, &post_id).await?;
     test.cleanup_user(&user_1_id).await?;
     test.cleanup_user(&user_2_id).await?;
     test.cleanup_user(&user_3_id).await?;

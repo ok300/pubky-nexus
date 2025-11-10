@@ -22,7 +22,7 @@ async fn test_delete_user_without_relationships() -> Result<()> {
     let user_id = test.create_user(&keypair, &user).await?;
 
     // Delete the user
-    test.cleanup_user(&user_id).await?;
+    test.cleanup_user(&keypair, &user_id).await?;
 
     // Attempt to find user details; should not exist
     let user_details_result = find_user_details(&user_id).await;

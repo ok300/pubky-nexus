@@ -36,7 +36,7 @@ async fn test_homeserver_follow_notification() -> Result<()> {
     let followee_id = test.create_user(&followee_keypair, &followee_user).await?;
 
     // Step 3: Follower follows the followee
-    test.create_follow(&follower_id, &followee_id).await?;
+    test.create_follow(&follower_keypair, &follower_id, &followee_id).await?;
 
     // Verify the followee gets a "New Follow" notification
     let notifications = Notification::get_by_id(&followee_id, Pagination::default())
@@ -61,7 +61,7 @@ async fn test_homeserver_follow_notification() -> Result<()> {
     }
 
     // Step 4: Followee follows the follower back
-    test.create_follow(&followee_id, &follower_id).await?;
+    test.create_follow(&followee_keypair, &followee_id, &follower_id).await?;
 
     // Verify the follower gets a "New Friend" notification
     let notifications_follower = Notification::get_by_id(&follower_id, Pagination::default())
@@ -84,8 +84,8 @@ async fn test_homeserver_follow_notification() -> Result<()> {
     }
 
     // Cleanup
-    test.cleanup_user(&follower_id).await?;
-    test.cleanup_user(&followee_id).await?;
+    test.cleanup_user(&follower_keypair, &follower_id).await?;
+    test.cleanup_user(&followee_keypair, &followee_id).await?;
 
     Ok(())
 }

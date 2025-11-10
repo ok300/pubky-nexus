@@ -41,7 +41,7 @@ async fn test_homeserver_user_tag_event_to_queue() -> Result<()> {
     // PUT user tag
     // That operation is going to write the event in the pending events queue, so block a bit the thread
     // to let write the indexes
-    test.put(tag_url.as_str(), tag).await?;
+    test.put(&tagger_keypair, tag_url.as_str(), tag).await?;
 
     let index_key = format!(
         "{}:{}",

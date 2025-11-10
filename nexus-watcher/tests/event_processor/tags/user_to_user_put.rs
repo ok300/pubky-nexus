@@ -48,7 +48,7 @@ async fn test_homeserver_put_tag_user_another() -> Result<()> {
     let tag_url = tag_uri_builder(tagger_user_id.clone(), tag.create_id());
 
     // PUT post tag
-    test.put(tag_url.as_str(), tag).await?;
+    test.put(&tagged_keypair, tag_url.as_str(), tag).await?;
 
     // Step 3: Verify tag existence and data consistency
 
@@ -98,8 +98,8 @@ async fn test_homeserver_put_tag_user_another() -> Result<()> {
     assert_eq!(influencer_score.unwrap(), 0);
 
     // Cleanup user
-    test.cleanup_user(&tagged_user_id).await?;
-    test.cleanup_user(&tagger_user_id).await?;
+    test.cleanup_user(&tagged_keypair, &tagged_user_id).await?;
+    test.cleanup_user(&tagger_keypair, &tagger_user_id).await?;
 
     Ok(())
 }

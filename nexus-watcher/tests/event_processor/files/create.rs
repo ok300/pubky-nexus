@@ -28,7 +28,7 @@ async fn test_put_pubkyapp_file() -> Result<()> {
     let blob_id = blob.create_id();
     let blob_url = blob_uri_builder(user_id.clone(), blob_id);
 
-    test.create_file_from_body(blob_url.as_str(), blob.0.clone())
+    test.create_file_from_body(&keypair, blob_url.as_str(), blob.0.clone())
         .await?;
 
     // Act
@@ -40,7 +40,7 @@ async fn test_put_pubkyapp_file() -> Result<()> {
         created_at: Utc::now().timestamp_millis(),
     };
 
-    let (file_id, _) = test.create_file(&user_id, &file).await?;
+    let (file_id, _) = test.create_file(&keypair, &user_id, &file).await?;
 
     // Assert
     let files = FileDetails::get_by_ids(

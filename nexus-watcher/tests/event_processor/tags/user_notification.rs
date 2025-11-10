@@ -47,7 +47,7 @@ async fn test_homeserver_put_tag_user_notification() -> Result<()> {
     let tag_url = tag_uri_builder(tagger_user_id.clone(), tag.create_id());
 
     // Put tag
-    test.put(tag_url.as_str(), tag).await?;
+    test.put(&tagged_keypair, tag_url.as_str(), tag).await?;
 
     // Check if the tagged user received a notification
     let notifications = Notification::get_by_id(&tagged_user_id, Pagination::default())
@@ -78,8 +78,8 @@ async fn test_homeserver_put_tag_user_notification() -> Result<()> {
     }
 
     // Cleanup
-    test.cleanup_user(&tagged_user_id).await?;
-    test.cleanup_user(&tagger_user_id).await?;
+    test.cleanup_user(&tagged_keypair, &tagged_user_id).await?;
+    test.cleanup_user(&tagger_keypair, &tagger_user_id).await?;
 
     Ok(())
 }

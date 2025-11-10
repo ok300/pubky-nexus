@@ -30,7 +30,7 @@ async fn test_homeserver_post_engagement() -> Result<()> {
         attachments: None,
     };
 
-    let alice_post_id = test.create_post(&alice_id, &alice_post).await?;
+    let alice_post_id = test.create_post(&alice_user_keypair, &alice_id, &alice_post).await?;
 
     let alice_post_key: [&str; 2] = [&alice_id, &alice_post_id];
 
@@ -65,7 +65,7 @@ async fn test_homeserver_post_engagement() -> Result<()> {
         attachments: None,
     };
 
-    let _reply_id = test.create_post(&bob_id, &reply).await?;
+    let _reply_id = test.create_post(&bob_user_keypair, &bob_id, &reply).await?;
 
     // Create repost of alice post
     let repost = PubkyAppPost {
@@ -79,7 +79,7 @@ async fn test_homeserver_post_engagement() -> Result<()> {
         attachments: None,
     };
 
-    let _repost_id = test.create_post(&bob_id, &repost).await?;
+    let _repost_id = test.create_post(&bob_user_keypair, &bob_id, &repost).await?;
 
     let total_engagement = check_member_total_engagement_user_posts(&alice_post_key)
         .await
@@ -88,12 +88,12 @@ async fn test_homeserver_post_engagement() -> Result<()> {
     assert_eq!(total_engagement.unwrap(), 2);
 
     // // // TODO: Impl DEL post. Assert the reply does not exist in Nexus
-    // test.cleanup_post(&user_id, &reply_id).await?;
+    // test.cleanup_post(&alice_user_keypair, &alice_user_keypair, &alice_user_keypair, &user_id, &reply_id).await?;
 
     // Cleanup
-    test.cleanup_user(&alice_id).await?;
-    test.cleanup_user(&bob_id).await?;
-    //test.cleanup_post(&user_id, &parent_post_id).await?;
+    test.cleanup_user(&alice_user_keypair, &alice_id).await?;
+    test.cleanup_user(&bob_user_keypair, &bob_id).await?;
+    //test.cleanup_post(&alice_user_keypair, &alice_user_keypair, &alice_user_keypair, &user_id, &parent_post_id).await?;
 
     Ok(())
 }

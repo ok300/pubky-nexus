@@ -40,7 +40,7 @@ async fn test_homeserver_post_repost_cannot_index() -> Result<()> {
         attachments: None,
     };
 
-    let repost_id = test.create_post(&user_id, &repost_post).await?;
+    let repost_id = test.create_post(&keypair, &user_id, &repost_post).await?;
 
     let repost_url = post_uri_builder(user_id, repost_id);
 

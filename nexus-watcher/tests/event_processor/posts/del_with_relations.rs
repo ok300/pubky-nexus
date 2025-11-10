@@ -31,7 +31,7 @@ async fn test_delete_post_with_relationships() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&user_id, &post).await?;
+    let post_id = test.create_post(&keypair, &user_id, &post).await?;
 
     // Create a tag
     let tag = PubkyAppTag {
@@ -45,7 +45,7 @@ async fn test_delete_post_with_relationships() -> Result<()> {
     test.put(&tag_url, tag).await?;
 
     // Delete the post using the event handler
-    test.cleanup_post(&user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
 
     // Attempt to find post details; should exist, but content is [DELETED]
     let post_details_result = PostDetails::get_by_id(&user_id, &post_id)

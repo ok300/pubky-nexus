@@ -31,7 +31,7 @@ async fn test_homeserver_post_reply_without_post_parent() -> Result<(), DynError
         attachments: None,
     };
 
-    let post_id = test.create_post(&author_id, &post).await?;
+    let post_id = test.create_post(&author_user_keypair, &author_id, &post).await?;
 
     // Create reply
     let parent_uri = post_uri_builder(author_id.clone(), post_id);
@@ -44,7 +44,7 @@ async fn test_homeserver_post_reply_without_post_parent() -> Result<(), DynError
         attachments: None,
     };
 
-    let reply_id = test.create_post(&author_id, &reply).await?;
+    let reply_id = test.create_post(&author_user_keypair, &author_id, &reply).await?;
 
     // Create raw event line to retrieve the content from the homeserver
     let reply_uri = post_uri_builder(author_id.clone(), reply_id);

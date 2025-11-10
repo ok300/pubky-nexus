@@ -48,7 +48,7 @@ async fn test_homeserver_del_tag_to_another_user() -> Result<()> {
     let tag_url = tag_uri_builder(tagger_user_id.clone(), tag.create_id());
 
     // Put tag
-    test.put(tag_url.as_str(), tag).await?;
+    test.put(&tagged_keypair, tag_url.as_str(), tag).await?;
 
     // Step 3: Delete the tag
     test.del(&tag_url).await?;
@@ -89,8 +89,8 @@ async fn test_homeserver_del_tag_to_another_user() -> Result<()> {
     assert_eq!(influencer_score.unwrap(), 0);
 
     // Cleanup user
-    test.cleanup_user(&tagged_user_id).await?;
-    test.cleanup_user(&tagger_user_id).await?;
+    test.cleanup_user(&tagged_keypair, &tagged_user_id).await?;
+    test.cleanup_user(&tagger_keypair, &tagger_user_id).await?;
 
     Ok(())
 }

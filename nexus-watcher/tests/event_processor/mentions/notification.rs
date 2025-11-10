@@ -59,7 +59,7 @@ async fn test_homeserver_mentions_notifications() -> Result<()> {
         attachments: None,
     };
 
-    let post_id = test.create_post(&author_user_id, &post).await?;
+    let post_id = test.create_post(&author_keypair, &author_user_id, &post).await?;
 
     // Check if mentioned User 1 received a Mention notification
     let notifications_1 = Notification::get_by_id(&mentioned_user_1_id, Pagination::default())
@@ -120,8 +120,8 @@ async fn test_homeserver_mentions_notifications() -> Result<()> {
     }
 
     // Cleanup
-    test.cleanup_post(&author_user_id, &post_id).await?;
-    test.cleanup_user(&author_user_id).await?;
+    test.cleanup_post(&author_keypair, &author_keypair, &author_keypair, &author_user_id, &post_id).await?;
+    test.cleanup_user(&author_keypair, &author_user_id).await?;
     test.cleanup_user(&mentioned_user_1_id).await?;
     test.cleanup_user(&mentioned_user_2_id).await?;
 

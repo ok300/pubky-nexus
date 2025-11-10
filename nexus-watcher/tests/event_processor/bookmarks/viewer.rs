@@ -31,7 +31,7 @@ async fn test_homeserver_viewer_bookmark() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&user_id, &post).await?;
+    let post_id = test.create_post(&keypair, &user_id, &post).await?;
 
     // Step 3: Add a bookmark to the post. Before create a new user
     let viewer_keypair = Keypair::random();
@@ -78,9 +78,9 @@ async fn test_homeserver_viewer_bookmark() -> Result<()> {
     assert_eq!(result_bookmarks[0], format!("{user_id}:{post_id}"));
 
     // Cleanup user and post
-    test.cleanup_post(&user_id, &post_id).await?;
-    test.cleanup_user(&user_id).await?;
-    test.cleanup_user(&viewer_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
+    test.cleanup_user(&keypair, &user_id).await?;
+    test.cleanup_user(&viewer_keypair, &viewer_id).await?;
 
     Ok(())
 }

@@ -61,7 +61,7 @@ async fn test_homeserver_mentions() -> Result<()> {
         attachments: None,
     };
 
-    let post_id = test.create_post(&author_user_id, &post).await?;
+    let post_id = test.create_post(&author_user_keypair, &author_user_id, &post).await?;
 
     // GRAPH_OP
     let post_mention_users = find_post_mentions(&author_user_id, &post_id).await.unwrap();
@@ -95,8 +95,8 @@ async fn test_homeserver_mentions() -> Result<()> {
     );
 
     // Cleanup
-    test.cleanup_post(&author_user_id, &post_id).await?;
-    test.cleanup_user(&author_user_id).await?;
+    test.cleanup_post(&author_user_keypair, &author_user_keypair, &author_user_keypair, &author_user_id, &post_id).await?;
+    test.cleanup_user(&author_user_keypair, &author_user_id).await?;
     test.cleanup_user(&mentioned_user_1_id).await?;
     test.cleanup_user(&mentioned_user_2_id).await?;
 

@@ -29,7 +29,7 @@ async fn test_homeserver_bookmark_without_user() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&author_id, &post).await?;
+    let post_id = test.create_post(&author_keypair, &author_id, &post).await?;
 
     // Create a key but it would not be synchronised in nexus
     let keypair = Keypair::random();

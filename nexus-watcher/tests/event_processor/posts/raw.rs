@@ -32,7 +32,7 @@ async fn test_homeserver_put_post_event() -> Result<()> {
         attachments: None,
     };
 
-    let post_id = test.create_post(&user_id, &post).await?;
+    let post_id = test.create_post(&keypair, &user_id, &post).await?;
 
     // GRAPH_OP: Assert if the event writes the graph
     // Cannot use PostDetails::get_from_graph because it indexes also,
@@ -89,8 +89,8 @@ async fn test_homeserver_put_post_event() -> Result<()> {
     assert_eq!(exist_count.posts, 1);
 
     // Cleanup
-    test.cleanup_user(&user_id).await?;
-    test.cleanup_post(&user_id, &post_id).await?;
+    test.cleanup_user(&keypair, &user_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
 
     // // TODO: Impl DEL post. Assert the new post does not exist in Nexus
     // let result_post = PostView::get_by_id(&user_id, &post_id, None, None, None)

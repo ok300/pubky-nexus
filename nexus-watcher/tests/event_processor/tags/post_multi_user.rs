@@ -54,7 +54,7 @@ async fn test_homeserver_multi_user_posts_tags() -> Result<()> {
         attachments: None,
     };
     // Create a post for the current user
-    let post_id = test.create_post(author_id, &post).await?;
+    let post_id = test.create_post(&keypair, author_id, &post).await?;
 
     let tagger_a_id = &user_ids[1];
     let tagger_b_id = &user_ids[2];

@@ -50,7 +50,7 @@ async fn test_homeserver_tag_cannot_add_while_index() -> Result<()> {
     let tag_url = tag_uri_builder(shadow_user_id.clone(), tag.create_id());
 
     // PUT user tag
-    test.put(tag_url.as_str(), tag_blob).await?;
+    test.put(&tagged_keypair, tag_url.as_str(), tag_blob).await?;
 
     // Create raw event line to retrieve the content from the homeserver
     let tag_event = format!("PUT {tag_url}");
@@ -90,7 +90,7 @@ async fn test_homeserver_tag_cannot_add_while_index() -> Result<()> {
         embed: None,
         attachments: None,
     };
-    let post_id = test.create_post(&tagged_user_id, &post).await?;
+    let post_id = test.create_post(&tagged_keypair, &tagged_user_id, &post).await?;
 
     let label = "merkle_tree";
 

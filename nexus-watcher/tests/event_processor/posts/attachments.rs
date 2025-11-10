@@ -28,7 +28,7 @@ async fn test_homeserver_post_attachments() -> Result<()> {
     let blob_id = blob.create_id();
     let blob_url = blob_uri_builder(user_id.clone(), blob_id);
 
-    test.create_file_from_body(blob_url.as_str(), blob.0.clone())
+    test.create_file_from_body(&keypair, blob_url.as_str(), blob.0.clone())
         .await?;
     test.ensure_event_processing_complete().await?;
 
@@ -39,7 +39,7 @@ async fn test_homeserver_post_attachments() -> Result<()> {
         size: blob.0.len(),
         created_at: Utc::now().timestamp_millis(),
     };
-    let (_, file_url) = test.create_file(&user_id, &file).await?;
+    let (_, file_url) = test.create_file(&keypair, &user_id, &file).await?;
 
     let post = PubkyAppPost {
         content: "Watcher:PostEvent:Post".to_string(),
@@ -49,7 +49,7 @@ async fn test_homeserver_post_attachments() -> Result<()> {
         attachments: Some(vec![file_url.clone()]),
     };
 
-    let post_id = test.create_post(&user_id, &post).await?;
+    let post_id = test.create_post(&keypair, &user_id, &post).await?;
 
     let post_details = find_post_details(&user_id, &post_id).await.unwrap();
 
@@ -57,8 +57,8 @@ async fn test_homeserver_post_attachments() -> Result<()> {
     assert_eq!(post_details.content, post.content);
     assert_eq!(post_details.attachments, Some(vec![file_url]));
     // Cleanup
-    test.cleanup_user(&user_id).await?;
-    test.cleanup_post(&user_id, &post_id).await?;
+    test.cleanup_user(&keypair, &user_id).await?;
+    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
 
     Ok(())
 }
