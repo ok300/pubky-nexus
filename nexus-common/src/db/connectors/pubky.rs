@@ -1,10 +1,10 @@
-use pubky::Client;
+use pubky::Pubky;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::OnceCell;
 use tracing::debug;
 
-static PUBKY_CLIENT_SINGLETON: OnceCell<Arc<Client>> = OnceCell::const_new();
+static PUBKY_CLIENT_SINGLETON: OnceCell<Arc<Pubky>> = OnceCell::const_new();
 
 #[derive(Debug, Error)]
 pub enum PubkyClientError {
@@ -34,12 +34,9 @@ impl PubkyClient {
                     }
                 );
                 let client = match testnet_host {
-                    Some(host) => Client::builder()
-                        .testnet_with_host(host)
-                        .build()
+                    Some(_host) => Pubky::testnet()
                         .map_err(|e| PubkyClientError::ClientError(e.to_string()))?,
-                    None => Client::builder()
-                        .build()
+                    None => Pubky::new()
                         .map_err(|e| PubkyClientError::ClientError(e.to_string()))?,
                 };
                 Ok(Arc::new(client))
@@ -48,19 +45,19 @@ impl PubkyClient {
             .map(|_| ())
     }
     /// Retrieves an instance of the `PubkyClient`
-    pub fn get() -> Result<Arc<Client>, PubkyClientError> {
+    pub fn get() -> Result<Arc<Pubky>, PubkyClientError> {
         PUBKY_CLIENT_SINGLETON
             .get()
             .cloned()
             .ok_or(PubkyClientError::NotInitialized)
     }
 
-    /// Initializes the `PUBKY_CONNECTOR_SINGLETON` with a provided `Client` instance.
+    /// Initializes the `PUBKY_CONNECTOR_SINGLETON` with a provided `Pubky` instance.
     ///
     /// # Usage:
-    /// - This function is primarily intended for **watcher tests** where a controlled `Client` instance
+    /// - This function is primarily intended for **watcher tests** where a controlled `Pubky` instance
     ///   needs to be injected instead of relying on environment-based initialization
-    pub async fn init_from_client(client: Client) -> Result<(), PubkyClientError> {
+    pub async fn init_from_client(client: Pubky) -> Result<(), PubkyClientError> {
         PUBKY_CLIENT_SINGLETON
             .get_or_try_init(|| async { Ok(Arc::new(client)) })
             .await
