@@ -1,4 +1,4 @@
-use pubky::Pubky;
+use pubky::{Pubky, PubkyHttpClient};
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::OnceCell;
@@ -25,21 +25,17 @@ impl PubkyClient {
     pub async fn initialise(testnet_host: Option<&str>) -> Result<(), PubkyClientError> {
         PUBKY_CLIENT_SINGLETON
             .get_or_try_init(|| async {
-                debug!(
-                    "Initialising PubkyClient in {} mode",
-                    if let Some(host) = testnet_host {
-                        format!("testnet with host '{host}'")
-                    } else {
-                        "mainnet".to_string()
-                    }
-                );
+                let mode = testnet_host
+                    .map(|host| format!("testnet with host '{host}'"))
+                    .unwrap_or_else(|| "mainnet".to_string());
+                debug!("Initialising PubkyClient in {mode} mode");
+
                 let client = match testnet_host {
-                    Some(_host) => Pubky::testnet()
-                        .map_err(|e| PubkyClientError::ClientError(e.to_string()))?,
-                    None => Pubky::new()
-                        .map_err(|e| PubkyClientError::ClientError(e.to_string()))?,
-                };
-                Ok(Arc::new(client))
+                    Some(host) => PubkyHttpClient::builder().testnet_with_host(host).build(),
+                    None => PubkyHttpClient::new(),
+                }
+                .map_err(|e| PubkyClientError::ClientError(e.to_string()))?;
+                Ok(Arc::new(Pubky::with_client(client)))
             })
             .await
             .map(|_| ())
