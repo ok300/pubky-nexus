@@ -152,16 +152,14 @@ impl WatcherTest {
     /// # Parameters
     /// - `homeserver_uri`: The URI of the homeserver to write the data to.
     /// - `object`: A generic type representing the data to be sent, which must implement `serde::Serialize`.
-    pub async fn put<T>(&mut self, homeserver_uri: &str, object: T) -> Result<()>
+    pub async fn put<T>(&mut self, keypair: &Keypair, homeserver_uri: &str, object: T) -> Result<()>
     where
         T: serde::Serialize,
     {
         let pubky_client = PubkyClient::get().unwrap();
-        pubky_client
-            .put(homeserver_uri)
-            .json(&object)
-            .send()
-            .await?;
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().put(homeserver_uri, serde_json::to_vec(&object)?).await?;
         self.ensure_event_processing_complete().await?;
         Ok(())
     }
@@ -170,15 +168,19 @@ impl WatcherTest {
     ///
     /// This function performs the following steps:
     /// 1. Retrieves the Pubky client from the PubkyConnector.
-    /// 2. Sends a DELETE request to the specified homeserver URI.
-    /// 3. Ensures that all event processing is complete after the DELETE operation.
+    /// 2. Signs in with the provided keypair to get a session.
+    /// 3. Sends a DELETE request to the specified homeserver URI.
+    /// 4. Ensures that all event processing is complete after the DELETE operation.
     ///
     /// # Parameters
+    /// - `keypair`: The keypair used for authentication.
     /// - `homeserver_uri`: The URI of the homeserver from which content should be deleted.
     ///
-    pub async fn del(&mut self, homeserver_uri: &str) -> Result<()> {
+    pub async fn del(&mut self, keypair: &Keypair, homeserver_uri: &str) -> Result<()> {
         let pubky_client = PubkyClient::get().unwrap();
-        pubky_client.delete(homeserver_uri).send().await?;
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().delete(homeserver_uri).await?;
         self.ensure_event_processing_complete().await?;
         Ok(())
     }
@@ -190,7 +192,8 @@ impl WatcherTest {
         let pubky_client = PubkyClient::get().unwrap();
 
         let public_key: PublicKey = self.homeserver_id.clone().try_into().unwrap();
-        pubky_client.signup(keypair, &public_key, None).await?;
+        let signer = pubky_client.signer(keypair.clone());
+        signer.signup(&public_key, None).await?;
         Ok(())
     }
 
@@ -199,11 +202,12 @@ impl WatcherTest {
         let pubky_client = PubkyClient::get().unwrap();
         let public_key: PublicKey = self.homeserver_id.clone().try_into().unwrap();
         // Register the key in the homeserver
-        pubky_client.signup(keypair, &public_key, None).await?;
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signup(&public_key, None).await?;
         let url = format!("pubky://{user_id}/pub/pubky.app/profile.json");
 
         // Write the user profile in the pubky.app repository
-        pubky_client.put(url.as_str()).json(&user).send().await?;
+        session.storage().put(url.as_str(), serde_json::to_vec(&user)?).await?;
 
         // Index to Nexus from Homeserver using the events processor
         self.ensure_event_processing_complete().await?;
@@ -213,69 +217,66 @@ impl WatcherTest {
     /// If we attempt two consecutive sign-ups with the same key, the homeserver returns the following error:
     /// 412 Precondition Failed - Compare and swap failed; there is a more recent SignedPacket than the one seen before publishing.
     /// To prevent this error after the first sign-up, we will create/update the existing record instead of creating a new one
-    pub async fn create_profile(&mut self, user_id: &str, user: &PubkyAppUser) -> Result<String> {
+    pub async fn create_profile(&mut self, keypair: &Keypair, user_id: &str, user: &PubkyAppUser) -> Result<String> {
         let pubky_client = PubkyClient::get().unwrap();
         let url = format!("pubky://{user_id}/pub/pubky.app/profile.json");
 
         // Write the user profile in the pubky.app repository
-        pubky_client.put(url.as_str()).json(&user).send().await?;
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().put(url.as_str(), serde_json::to_vec(&user)?).await?;
 
         // Index to Nexus from Homeserver using the events processor
         self.ensure_event_processing_complete().await?;
         Ok(user_id.to_string())
     }
 
-    pub async fn create_post(&mut self, user_id: &str, post: &PubkyAppPost) -> Result<String> {
+    pub async fn create_post(&mut self, keypair: &Keypair, user_id: &str, post: &PubkyAppPost) -> Result<String> {
         let post_id = post.create_id();
         let url = post_uri_builder(user_id.into(), post_id.clone());
         // Write the post in the pubky.app repository
-        PubkyClient::get()
-            .unwrap()
-            .put(url.as_str())
-            .json(&post)
-            .send()
-            .await?;
+        let pubky_client = PubkyClient::get().unwrap();
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().put(url.as_str(), serde_json::to_vec(&post)?).await?;
 
         // Index to Nexus from Homeserver using the events processor
         self.ensure_event_processing_complete().await?;
         Ok(post_id)
     }
 
-    pub async fn cleanup_user(&mut self, user_id: &str) -> Result<()> {
+    pub async fn cleanup_user(&mut self, keypair: &Keypair, user_id: &str) -> Result<()> {
         let url = format!("pubky://{user_id}/pub/pubky.app/profile.json");
-        PubkyClient::get()
-            .unwrap()
-            .delete(url.as_str())
-            .send()
-            .await?;
+        let pubky_client = PubkyClient::get().unwrap();
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().delete(url.as_str()).await?;
         self.ensure_event_processing_complete().await?;
         Ok(())
     }
 
-    pub async fn cleanup_post(&mut self, user_id: &str, post_id: &str) -> Result<()> {
+    pub async fn cleanup_post(&mut self, keypair: &Keypair, user_id: &str, post_id: &str) -> Result<()> {
         let url = post_uri_builder(user_id.into(), post_id.into());
-        PubkyClient::get()
-            .unwrap()
-            .delete(url.as_str())
-            .send()
-            .await?;
+        let pubky_client = PubkyClient::get().unwrap();
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().delete(url.as_str()).await?;
         self.ensure_event_processing_complete().await?;
         Ok(())
     }
 
     pub async fn create_file(
         &mut self,
+        keypair: &Keypair,
         user_id: &str,
         file: &PubkyAppFile,
     ) -> Result<(String, String)> {
         let file_id = file.create_id();
         let url = file_uri_builder(user_id.into(), file_id.clone());
-        PubkyClient::get()
-            .unwrap()
-            .put(url.as_str())
-            .json(&file)
-            .send()
-            .await?;
+        let pubky_client = PubkyClient::get().unwrap();
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().put(url.as_str(), serde_json::to_vec(&file)?).await?;
 
         self.ensure_event_processing_complete().await?;
         Ok((file_id, url))
@@ -283,56 +284,50 @@ impl WatcherTest {
 
     pub async fn create_file_from_body(
         &mut self,
+        keypair: &Keypair,
         homeserver_uri: &str,
         object: Vec<u8>,
     ) -> Result<()> {
-        PubkyClient::get()
-            .unwrap()
-            .put(homeserver_uri)
-            .body(object)
-            .send()
-            .await?;
+        let pubky_client = PubkyClient::get().unwrap();
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().put(homeserver_uri, object).await?;
         Ok(())
     }
 
-    pub async fn cleanup_file(&mut self, user_id: &str, file_id: &str) -> Result<()> {
+    pub async fn cleanup_file(&mut self, keypair: &Keypair, user_id: &str, file_id: &str) -> Result<()> {
         let url = file_uri_builder(user_id.into(), file_id.into());
-        PubkyClient::get()
-            .unwrap()
-            .delete(url.as_str())
-            .send()
-            .await?;
+        let pubky_client = PubkyClient::get().unwrap();
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().delete(url.as_str()).await?;
         self.ensure_event_processing_complete().await?;
         Ok(())
     }
 
-    pub async fn create_follow(&mut self, follower_id: &str, followee_id: &str) -> Result<String> {
+    pub async fn create_follow(&mut self, keypair: &Keypair, follower_id: &str, followee_id: &str) -> Result<String> {
         let follow_relationship = PubkyAppFollow {
             created_at: Utc::now().timestamp_millis(),
         };
         let follow_url = follow_uri_builder(follower_id.into(), followee_id.into());
-        PubkyClient::get()
-            .unwrap()
-            .put(follow_url.as_str())
-            .json(&follow_relationship)
-            .send()
-            .await?;
+        let pubky_client = PubkyClient::get().unwrap();
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().put(follow_url.as_str(), serde_json::to_vec(&follow_relationship)?).await?;
         // Process the event
         self.ensure_event_processing_complete().await?;
         Ok(follow_url)
     }
 
-    pub async fn create_mute(&mut self, muter_id: &str, mutee_id: &str) -> Result<String> {
+    pub async fn create_mute(&mut self, keypair: &Keypair, muter_id: &str, mutee_id: &str) -> Result<String> {
         let mute_relationship = PubkyAppFollow {
             created_at: Utc::now().timestamp_millis(),
         };
         let mute_url = mute_uri_builder(muter_id.into(), mutee_id.into());
-        PubkyClient::get()
-            .unwrap()
-            .put(mute_url.as_str())
-            .json(&mute_relationship)
-            .send()
-            .await?;
+        let pubky_client = PubkyClient::get().unwrap();
+        let signer = pubky_client.signer(keypair.clone());
+        let session = signer.signin().await?;
+        session.storage().put(mute_url.as_str(), serde_json::to_vec(&mute_relationship)?).await?;
         // Process the event
         self.ensure_event_processing_complete().await?;
         Ok(mute_url)

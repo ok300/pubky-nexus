@@ -23,9 +23,9 @@ async fn test_reply_to_post_on_unknown_homeserver() -> Result<()> {
 
     // Register the parent author PK in the new homeserver
     // We only need the record mapping, not necessarily the profile.json being uploaded
-    PubkyClient::get()?
-        .signup(&parent_author_kp, &parent_author_hs_pk, None)
-        .await?;
+    let pubky_client = PubkyClient::get()?;
+    let signer = pubky_client.signer(parent_author_kp.clone());
+    signer.signup(&parent_author_hs_pk, None).await?;
 
     // Create parent Post
     // We only need its ID, not necessarily to upload it on the new HS
@@ -85,9 +85,9 @@ async fn test_repost_of_post_on_unknown_homeserver() -> Result<()> {
 
     // Register the original author PK in the new homeserver
     // We only need the record mapping, not necessarily the profile.json being uploaded
-    PubkyClient::get()?
-        .signup(&original_author_kp, &original_author_hs_pk, None)
-        .await?;
+    let pubky_client = PubkyClient::get()?;
+    let signer = pubky_client.signer(original_author_kp.clone());
+    signer.signup(&original_author_hs_pk, None).await?;
 
     // Create original Post
     // We only need its ID, not necessarily to upload it on the new HS
@@ -161,9 +161,9 @@ async fn test_post_and_mention_users_on_unknown_homeserver() -> Result<()> {
     // Register each new user in their respective homeserver
     // We only need the record mapping, not necessarily the profile.json being uploaded
     let pk_client = PubkyClient::get()?;
-    pk_client.signup(&user_1_kp, &user_1_hs_pk, None).await?;
-    pk_client.signup(&user_2_kp, &user_2_hs_pk, None).await?;
-    pk_client.signup(&user_3_kp, &user_3_hs_pk, None).await?;
+    pk_client.signer(user_1_kp.clone()).signup(&user_1_hs_pk, None).await?;
+    pk_client.signer(user_2_kp.clone()).signup(&user_2_hs_pk, None).await?;
+    pk_client.signer(user_3_kp.clone()).signup(&user_3_hs_pk, None).await?;
 
     // Create the test post on the main test homeserver, created by a known user (author)
     let post_author = PubkyAppUser {

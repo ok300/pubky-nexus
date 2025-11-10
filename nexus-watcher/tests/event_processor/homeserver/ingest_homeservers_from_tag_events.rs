@@ -24,9 +24,9 @@ async fn test_tag_post_on_unknown_homeserver() -> Result<()> {
 
     // Register the tagged post author PK in the new homeserver
     // We only need the record mapping, not necessarily the profile.json being uploaded
-    PubkyClient::get()?
-        .signup(&tagged_post_author_kp, &tagged_post_hs_pk, None)
-        .await?;
+    let pubky_client = PubkyClient::get()?;
+    let signer = pubky_client.signer(tagged_post_author_kp.clone());
+    signer.signup(&tagged_post_hs_pk, None).await?;
 
     // Create tagged post
     let post = PubkyAppPost {
@@ -92,9 +92,9 @@ async fn test_tag_user_on_unknown_homeserver() -> Result<()> {
 
     // Register the tagged post author PK in the new homeserver
     // We only need the record mapping, not necessarily the profile.json being uploaded
-    PubkyClient::get()?
-        .signup(&tagged_user_author_kp, &tagged_user_hs_pk, None)
-        .await?;
+    let pubky_client = PubkyClient::get()?;
+    let signer = pubky_client.signer(tagged_user_author_kp.clone());
+    signer.signup(&tagged_user_hs_pk, None).await?;
 
     // Create tagger user
     let tagger_author_kp = Keypair::random();

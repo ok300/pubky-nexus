@@ -91,7 +91,7 @@ async fn test_large_network_scenario_counts() -> Result<()> {
                 embed: None,
                 attachments: None,
             };
-            let post_id = test.create_post(user_id, &post).await?;
+            let post_id = test.create_post(&keypairs[i], user_id, &post).await?;
             user_posts.get_mut(user_id).unwrap().push(post_id);
             total_posts += 1;
         }
@@ -112,7 +112,7 @@ async fn test_large_network_scenario_counts() -> Result<()> {
             if target_index != i {
                 let target_user_id = &user_ids[target_index];
                 if follow_set.insert(target_user_id.clone()) {
-                    test.create_follow(user_id, target_user_id).await?;
+                    test.create_follow(&keypairs[i], user_id, target_user_id).await?;
                     total_follows += 1;
                 }
             }
@@ -139,11 +139,9 @@ async fn test_large_network_scenario_counts() -> Result<()> {
                         created_at: chrono::Utc::now().timestamp_millis(),
                     };
                     let mute_url = mute_uri_builder(user_id.into(), target_user_id.into());
-                    pubky_client
-                        .put(mute_url.as_str())
-                        .json(&mute)
-                        .send()
-                        .await?;
+                    let signer = pubky_client.signer(keypairs[i].clone());
+                    let session = signer.signin().await?;
+                    session.storage().put(mute_url.as_str(), serde_json::to_vec(&mute)?).await?;
                     _total_mutes += 1;
                 }
             }
@@ -151,7 +149,7 @@ async fn test_large_network_scenario_counts() -> Result<()> {
     }
 
     // Users bookmark posts
-    for user_id in user_ids.iter() {
+    for (i, user_id) in user_ids.iter().enumerate() {
         let num_bookmarks = rng.random_range(1..=max_bookmarks_per_user);
         for _ in 0..num_bookmarks {
             let target_user_index = rng.random_range(0..NUM_USERS);
@@ -167,14 +165,14 @@ async fn test_large_network_scenario_counts() -> Result<()> {
 
                 let bookmark_url = bookmark_uri_builder(user_id.into(), bookmark.create_id());
 
-                test.put(&bookmark_url, &bookmark).await?;
+                test.put(&keypairs[i], &bookmark_url, &bookmark).await?;
                 total_bookmarks += 1;
             }
         }
     }
 
     // Users tag posts of other users
-    for user_id in user_ids.iter() {
+    for (i, user_id) in user_ids.iter().enumerate() {
         let num_tags = rng.random_range(1..=max_tags_per_user);
         for _ in 0..num_tags {
             let target_user_index = rng.random_range(0..NUM_USERS);
@@ -192,7 +190,7 @@ async fn test_large_network_scenario_counts() -> Result<()> {
 
                 let tag_url = tag_uri_builder(user_id.into(), tag.create_id());
 
-                test.put(&tag_url, &tag).await?;
+                test.put(&keypairs[i], &tag_url, &tag).await?;
                 total_tags += 1;
 
                 // FAILS: possibly deletes a tag twice and decrements twice in index.
@@ -202,7 +200,7 @@ async fn test_large_network_scenario_counts() -> Result<()> {
                 // Randomly decide to delete the tag
                 if rng.random_bool(0.1) {
                     // 10% chance to delete the tag
-                    test.del(&tag_url).await?;
+                    test.del(&keypairs[i], &tag_url).await?;
                     total_tag_deletions += 1;
                 }
             }
@@ -235,7 +233,7 @@ async fn test_large_network_scenario_counts() -> Result<()> {
     }
 
     // Users unmute other users
-    for user_id in user_ids.iter() {
+    for (i, user_id) in user_ids.iter().enumerate() {
         // Get list of users this user has muted
         let mute_set = &mut user_mutes.get_mut(user_id).unwrap();
         let muted: Vec<String> = mute_set.iter().cloned().collect();
@@ -252,7 +250,9 @@ async fn test_large_network_scenario_counts() -> Result<()> {
             let target_user_id = &muted[target_index];
             if unmuted.insert(target_user_id.clone()) {
                 let mute_uri = mute_uri_builder(user_id.into(), target_user_id.into());
-                pubky_client.delete(mute_uri.as_str()).send().await?;
+                let signer = pubky_client.signer(keypairs[i].clone());
+                let session = signer.signin().await?;
+                session.storage().delete(mute_uri.as_str()).await?;
                 mute_set.remove(target_user_id);
                 _total_unmutes += 1;
             }
