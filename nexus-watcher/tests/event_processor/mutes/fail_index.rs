@@ -26,14 +26,16 @@ async fn test_homeserver_mute_cannot_complete() -> Result<()> {
     test.register_user(&shadow_keypair).await?;
 
     // Mute the user
-    let muted_uri = test.create_mute(&user_id, &shadow_user_id).await?;
+    let muted_uri = test.create_mute(&keypair, &user_id, &shadow_user_id).await?;
     // Unmute the user
-    test.del(&muted_uri).await?;
+    test.del(&keypair, &muted_uri).await?;
 
     // Create a mute in opposite direction
-    let opossite_muted_uri = test.create_mute(&shadow_user_id, &user_id).await?;
+    let opossite_muted_uri = test
+        .create_mute(&shadow_keypair, &shadow_user_id, &user_id)
+        .await?;
     // Unmute the user
-    test.del(&opossite_muted_uri).await?;
+    test.del(&shadow_keypair, &opossite_muted_uri).await?;
 
     Ok(())
 }

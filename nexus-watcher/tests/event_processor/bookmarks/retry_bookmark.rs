@@ -37,7 +37,7 @@ async fn test_homeserver_bookmark_cannot_index() -> Result<()> {
     let bookmark_id = bookmark.create_id();
     let bookmark_url = bookmark_uri_builder(user_id, bookmark_id);
     // PUT bookmark
-    test.put(&bookmark_url, bookmark).await?;
+    test.put(&keypair, &bookmark_url, bookmark).await?;
 
     let put_index_key = format!(
         "{}:{}",
@@ -67,7 +67,7 @@ async fn test_homeserver_bookmark_cannot_index() -> Result<()> {
     };
 
     // DEL bookmark
-    test.del(&bookmark_url).await?;
+    test.del(&keypair, &bookmark_url).await?;
 
     let del_index_key = format!(
         "{}:{}",

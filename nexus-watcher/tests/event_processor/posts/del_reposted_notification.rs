@@ -59,7 +59,7 @@ async fn test_delete_reposted_post_notification() -> Result<()> {
     let repost_id = test.create_post(&keypair_b, &user_b_id, &repost).await?;
 
     // User A deletes their post
-    test.cleanup_post(&keypair_a, &keypair_a, &keypair_a, &user_a_id, &post_id).await?;
+    test.cleanup_post(&keypair_a, &user_a_id, &post_id).await?;
 
     // Verify that User B receives a notification about the deletion
     let notifications = Notification::get_by_id(&user_b_id, Pagination::default())

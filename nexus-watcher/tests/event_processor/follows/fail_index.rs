@@ -34,7 +34,7 @@ async fn test_homeserver_follow_cannot_complete() -> Result<()> {
     let shadow_followee_id = test.create_user(&followeee_keypair, &followee).await?;
 
     let follow_url = test
-        .create_follow(&follower_id, &shadow_followee_id)
+        .create_follow(&follower_keypair, &follower_id, &shadow_followee_id)
         .await?;
 
     // Create raw event line to retrieve the content from the homeserver
@@ -58,7 +58,7 @@ async fn test_homeserver_follow_cannot_complete() -> Result<()> {
 
     // Create a follow in opposite direction
     let opposite_follow = test
-        .create_follow(&shadow_followee_id, &follower_id)
+        .create_follow(&followeee_keypair, &shadow_followee_id, &follower_id)
         .await?;
 
     // Create raw event line to retrieve the content from the homeserver

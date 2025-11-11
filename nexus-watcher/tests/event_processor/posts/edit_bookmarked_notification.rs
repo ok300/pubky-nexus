@@ -52,7 +52,7 @@ async fn test_edit_bookmarked_post_notification() -> Result<()> {
         created_at: 0,
     };
     let bookmark_url = bookmark_uri_builder(user_b_id.clone(), bookmark.create_id());
-    test.put(&bookmark_url, bookmark).await?;
+    test.put(&keypair_b, &bookmark_url, bookmark).await?;
 
     // User A edits their post
     post.content = "Edited post by User A".to_string();

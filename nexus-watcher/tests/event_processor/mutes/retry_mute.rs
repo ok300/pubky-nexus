@@ -26,7 +26,7 @@ async fn test_homeserver_mute_cannot_index() -> Result<()> {
     let muter_id = test.create_user(&muter_keypair, &muter_user).await?;
 
     // Mute the user
-    test.create_mute(&muter_id, &mutee_id).await?;
+    test.create_mute(&muter_keypair, &muter_id, &mutee_id).await?;
 
     let mute_url = mute_uri_builder(muter_id, mutee_id.clone());
 
@@ -58,7 +58,7 @@ async fn test_homeserver_mute_cannot_index() -> Result<()> {
         _ => panic!("The error type has to be MissingDependency type"),
     };
 
-    test.del(&mute_url).await?;
+    test.del(&muter_keypair, &mute_url).await?;
 
     let del_index_key = format!(
         "{}:{}",

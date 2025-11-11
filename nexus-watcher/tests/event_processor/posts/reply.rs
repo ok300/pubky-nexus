@@ -181,11 +181,11 @@ async fn test_homeserver_post_reply() -> Result<()> {
         "Replies should not be in the global total engagement sorted set"
     );
 
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &reply_id).await?;
+    test.cleanup_post(&keypair, &user_id, &reply_id).await?;
 
     // Cleanup
     test.cleanup_user(&keypair, &user_id).await?;
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &parent_post_id).await?;
+    test.cleanup_post(&keypair, &user_id, &parent_post_id).await?;
 
     Ok(())
 }

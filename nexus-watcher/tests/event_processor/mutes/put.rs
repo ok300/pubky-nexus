@@ -32,7 +32,7 @@ async fn test_homeserver_put_mute() -> Result<()> {
     let mutee_id = test.create_user(&mutee_keypair, &mutee_user).await?;
 
     // Mute the user
-    test.create_mute(&muter_id, &mutee_id).await?;
+    test.create_mute(&muter_keypair, &muter_id, &mutee_id).await?;
 
     // Assert if the mute relationship was created
     let exist = find_mute_relationship(&muter_id, &mutee_id).await?;

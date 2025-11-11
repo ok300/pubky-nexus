@@ -95,10 +95,10 @@ async fn test_homeserver_mentions() -> Result<()> {
     );
 
     // Cleanup
-    test.cleanup_post(&author_user_keypair, &author_user_keypair, &author_user_keypair, &author_user_id, &post_id).await?;
+    test.cleanup_post(&author_user_keypair, &author_user_id, &post_id).await?;
     test.cleanup_user(&author_user_keypair, &author_user_id).await?;
-    test.cleanup_user(&mentioned_user_1_id).await?;
-    test.cleanup_user(&mentioned_user_2_id).await?;
+    test.cleanup_user(&mentioned_user_1_keypair, &mentioned_user_1_id).await?;
+    test.cleanup_user(&mentioned_user_2_keypair, &mentioned_user_2_id).await?;
 
     Ok(())
 }

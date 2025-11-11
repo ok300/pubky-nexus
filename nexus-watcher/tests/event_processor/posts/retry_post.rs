@@ -60,7 +60,7 @@ async fn test_homeserver_post_cannot_index() -> Result<()> {
         _ => panic!("The error type has to be MissingDependency type"),
     };
 
-    test.del(&post_url).await?;
+    test.del(&keypair, &post_url).await?;
 
     let del_index_key = format!(
         "{}:{}",

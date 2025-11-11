@@ -42,10 +42,10 @@ async fn test_delete_post_with_relationships() -> Result<()> {
     let tag_url = tag_uri_builder(user_id.clone(), tag.create_id());
 
     // Put tag
-    test.put(&tag_url, tag).await?;
+    test.put(&keypair, &tag_url, tag).await?;
 
     // Delete the post using the event handler
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &user_id, &post_id).await?;
 
     // Attempt to find post details; should exist, but content is [DELETED]
     let post_details_result = PostDetails::get_by_id(&user_id, &post_id)

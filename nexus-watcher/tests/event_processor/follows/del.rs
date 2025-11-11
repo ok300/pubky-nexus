@@ -46,10 +46,12 @@ async fn test_homeserver_unfollow() -> Result<()> {
         .unwrap();
 
     // Follow the followee
-    let follow_url = test.create_follow(&follower_id, &followee_id).await?;
+    let follow_url = test
+        .create_follow(&follower_keypair, &follower_id, &followee_id)
+        .await?;
 
     // Unfollow the followee
-    test.del(&follow_url).await?;
+    test.del(&follower_keypair, &follow_url).await?;
 
     // GRAPH_OP: Check if relationship was deleted
     let exist = find_follow_relationship(&follower_id, &followee_id)
@@ -115,8 +117,8 @@ async fn test_homeserver_unfollow() -> Result<()> {
     );
 
     // Cleanup
-    test.cleanup_user(&follower_id).await?;
-    test.cleanup_user(&followee_id).await?;
+    test.cleanup_user(&follower_keypair, &follower_id).await?;
+    test.cleanup_user(&followee_keypair, &followee_id).await?;
 
     Ok(())
 }

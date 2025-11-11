@@ -82,11 +82,11 @@ async fn test_homeserver_reply_repost() -> Result<()> {
     assert_eq!(exist_count.posts, 3);
 
     // TODO: Impl DEL post. Assert the reply does not exist in Nexus
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &reply_id).await?;
+    test.cleanup_post(&keypair, &user_id, &reply_id).await?;
 
     // Cleanup
     test.cleanup_user(&keypair, &user_id).await?;
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &parent_post_id).await?;
+    test.cleanup_post(&keypair, &user_id, &parent_post_id).await?;
 
     Ok(())
 }

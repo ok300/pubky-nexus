@@ -62,9 +62,9 @@ async fn test_homeserver_del_tag_post() -> Result<()> {
     let tag_url = tag_uri_builder(tagger_user_id.clone(), tag.create_id());
 
     // Step 3: Creat & Delete the tag
-    test.put(&tag_url, tag).await?;
+    test.put(&tagger_keypair, &tag_url, tag).await?;
 
-    test.del(&tag_url).await?;
+    test.del(&tagger_keypair, &tag_url).await?;
 
     // Step 4: Verify tag existence and data consistency
     // GRAPH_OP: Check if the tag exists in the graph database
@@ -137,7 +137,7 @@ async fn test_homeserver_del_tag_post() -> Result<()> {
     assert!(tag_timeline.is_none());
 
     // Cleanup user and post
-    test.cleanup_post(&tagger_keypair, &tagger_keypair, &tagger_keypair, &author_user_id, &post_id).await?;
+    test.cleanup_post(&author_keypair, &author_user_id, &post_id).await?;
     test.cleanup_user(&author_keypair, &author_user_id).await?;
     test.cleanup_user(&tagger_keypair, &tagger_user_id).await?;
 

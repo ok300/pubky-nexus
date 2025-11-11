@@ -40,7 +40,7 @@ async fn test_homeserver_unfollow_friend() -> Result<()> {
     let follow_back_uri = test.create_follow(&followee_keypair, &followee_id, &follower_id).await?;
 
     // Step 5: Follower unfollows the followee
-    test.del(&follow_uri).await?;
+    test.del(&follower_keypair, &follow_uri).await?;
 
     // CACHE_OP: Assert if cache has been updated
     let follower_count = UserCounts::try_from_index_json(&[&follower_id], None)
@@ -74,7 +74,7 @@ async fn test_homeserver_unfollow_friend() -> Result<()> {
         "Follower should not be following Followee"
     );
 
-    test.del(&follow_back_uri).await?;
+    test.del(&followee_keypair, &follow_back_uri).await?;
 
     // GRAPH_OP: Check if relationship was deleted
     let exist = find_follow_relationship(&followee_id, &follower_id)

@@ -55,7 +55,7 @@ async fn test_moderated_post_lifecycle() -> Result<()> {
     };
     let tag_url = tag_uri_builder(moderator_id, tag.create_id());
     // Put tag
-    test.put(&tag_url, tag).await?;
+    test.put(&moderator_key, &tag_url, tag).await?;
 
     // 4. Confirm the post does not exist
     let post_details = find_post_details(&user_id, &post_id).await;

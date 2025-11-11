@@ -46,7 +46,8 @@ async fn test_homeserver_put_follow() -> Result<()> {
         .unwrap();
 
     // Follow the followee
-    test.create_follow(&follower_id, &followee_id).await?;
+    test.create_follow(&follower_keypair, &follower_id, &followee_id)
+        .await?;
 
     // GRAPH_OP: Check if relationship was created
     let exist = find_follow_relationship(&follower_id, &followee_id)
@@ -89,8 +90,8 @@ async fn test_homeserver_put_follow() -> Result<()> {
     assert_eq!(exist_count.following, 1);
 
     // Cleanup
-    test.cleanup_user(&follower_id).await?;
-    test.cleanup_user(&followee_id).await?;
+    test.cleanup_user(&follower_keypair, &follower_id).await?;
+    test.cleanup_user(&followee_keypair, &followee_id).await?;
 
     Ok(())
 }

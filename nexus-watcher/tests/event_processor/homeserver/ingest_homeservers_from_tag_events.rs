@@ -67,7 +67,7 @@ async fn test_tag_post_on_unknown_homeserver() -> Result<()> {
         tagger_author_id,
         tag.create_id()
     );
-    test.put(&tag_url, tag).await?;
+    test.put(&tagger_author_kp, &tag_url, tag).await?;
 
     // Check if the new homeserver of the unknown tagged user was ingested
     let tagged_post_hs_id = PubkyId::try_from(&tagged_post_hs_pk.to_z32()).unwrap();
@@ -122,7 +122,7 @@ async fn test_tag_user_on_unknown_homeserver() -> Result<()> {
         tagger_author_id,
         tag.create_id()
     );
-    test.put(&tag_url, tag).await?;
+    test.put(&tagger_author_kp, &tag_url, tag).await?;
 
     // Check if the new homeserver of the unknown tagged user was ingested
     let tagged_user_hs_id = PubkyId::try_from(&tagged_user_hs_pk.to_z32()).unwrap();

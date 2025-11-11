@@ -53,7 +53,9 @@ async fn test_homeserver_viewer_bookmark() -> Result<()> {
     let bookmark_url = bookmark_uri_builder(viewer_id.clone(), bookmark_id.clone());
 
     // Put bookmark
-    test.put(&bookmark_url, bookmark).await.unwrap();
+    test.put(&viewer_keypair, &bookmark_url, bookmark)
+        .await
+        .unwrap();
 
     // Step 4: Verify the bookmark exists in Nexus
     // GRAPH_OP: Assert if the event writes the graph
@@ -78,7 +80,7 @@ async fn test_homeserver_viewer_bookmark() -> Result<()> {
     assert_eq!(result_bookmarks[0], format!("{user_id}:{post_id}"));
 
     // Cleanup user and post
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &user_id, &post_id).await?;
     test.cleanup_user(&keypair, &user_id).await?;
     test.cleanup_user(&viewer_keypair, &viewer_id).await?;
 

@@ -28,7 +28,7 @@ async fn test_homeserver_multi_user_posts_tags() -> Result<()> {
     let mut test = WatcherTest::setup().await?;
 
     // Step 1: Write in the homeserver and index in nexus
-    let mut user_ids = Vec::with_capacity(4);
+    let mut users = Vec::with_capacity(4);
     // Create 5 users
     for index in 0..4 {
         let keypair = Keypair::random();
@@ -41,10 +41,10 @@ async fn test_homeserver_multi_user_posts_tags() -> Result<()> {
             status: None,
         };
         let user_id = test.create_user(&keypair, &tagger).await?;
-        user_ids.push(user_id);
+        users.push((user_id, keypair));
     }
 
-    let author_id = &user_ids[0];
+    let (author_id, author_keypair) = (&users[0].0, &users[0].1);
 
     let post = PubkyAppPost {
         content: "Watcher:MultiUserPost:User:Post".to_string(),
@@ -54,20 +54,24 @@ async fn test_homeserver_multi_user_posts_tags() -> Result<()> {
         attachments: None,
     };
     // Create a post for the current user
-    let post_id = test.create_post(&keypair, author_id, &post).await?;
+    let post_id = test.create_post(author_keypair, author_id, &post).await?;
 
-    let tagger_a_id = &user_ids[1];
-    let tagger_b_id = &user_ids[2];
-    let tagger_c_id = &user_ids[3];
+    let (tagger_a_id, tagger_a_keypair) = (&users[1].0, &users[1].1);
+    let (tagger_b_id, tagger_b_keypair) = (&users[2].0, &users[2].1);
+    let (tagger_c_id, tagger_c_keypair) = (&users[3].0, &users[3].1);
 
     let label_water = "water";
     let label_fire = "fire";
 
     // Step 2: Create tags
     let mut tag_urls = Vec::with_capacity(5);
-    let water_taggers = [tagger_a_id, tagger_b_id, tagger_c_id];
+    let water_taggers = [
+        (tagger_a_id, tagger_a_keypair),
+        (tagger_b_id, tagger_b_keypair),
+        (tagger_c_id, tagger_c_keypair),
+    ];
 
-    for tagger_id in water_taggers {
+    for (tagger_id, keypair) in water_taggers {
         let tag = PubkyAppTag {
             uri: post_uri_builder(author_id.clone(), post_id.clone()),
             label: label_water.to_string(),
@@ -75,13 +79,16 @@ async fn test_homeserver_multi_user_posts_tags() -> Result<()> {
         };
         let tag_url = tag_uri_builder(tagger_id.clone(), tag.create_id());
         // Put tag
-        test.put(&tag_url, tag).await?;
-        tag_urls.push(tag_url)
+        test.put(keypair, &tag_url, tag).await?;
+        tag_urls.push((tag_url, keypair))
     }
 
-    let fire_taggers = [tagger_b_id, tagger_c_id];
+    let fire_taggers = [
+        (tagger_b_id, tagger_b_keypair),
+        (tagger_c_id, tagger_c_keypair),
+    ];
 
-    for tagger_id in fire_taggers {
+    for (tagger_id, keypair) in fire_taggers {
         let tag = PubkyAppTag {
             uri: post_uri_builder(author_id.clone(), post_id.clone()),
             label: label_fire.to_string(),
@@ -89,8 +96,8 @@ async fn test_homeserver_multi_user_posts_tags() -> Result<()> {
         };
         let tag_url = tag_uri_builder(tagger_id.clone(), tag.create_id());
         // Put tag
-        test.put(&tag_url, tag).await?;
-        tag_urls.push(tag_url)
+        test.put(keypair, &tag_url, tag).await?;
+        tag_urls.push((tag_url, keypair))
     }
 
     // Step 3: Assert all the PUT operations
@@ -187,8 +194,8 @@ async fn test_homeserver_multi_user_posts_tags() -> Result<()> {
     assert_eq!(total_engagement.unwrap(), 5);
 
     // Step 4: DEL tag from homeserver
-    for tag_url in tag_urls {
-        test.del(&tag_url).await?;
+    for (tag_url, keypair) in tag_urls {
+        test.del(keypair, &tag_url).await?;
     }
 
     // Step 5: Assert all the DEL operations
@@ -243,7 +250,7 @@ async fn test_homeserver_multi_user_posts_tags() -> Result<()> {
     assert_eq!(post_counts.unique_tags, 0);
 
     // Check if user counts updated: User:Counts:user_id
-    for tagger_id in water_taggers {
+    for (tagger_id, _) in water_taggers {
         let user_counts = find_user_counts(tagger_id).await;
         assert_eq!(user_counts.tagged, 0);
     }
