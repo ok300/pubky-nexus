@@ -68,10 +68,10 @@ async fn test_homeserver_del_post_with_attachments() -> Result<()> {
     assert_eq!(post_details.attachments, Some(file_urls));
 
     // Cleanup
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &user_id, &post_id).await?;
     // If the post has attachments, it also needs to send DEL event
-    test.cleanup_file(&keypair, &keypair, &keypair, &user_id, &file_ids[0]).await?;
-    test.cleanup_file(&keypair, &keypair, &keypair, &user_id, &file_ids[1]).await?;
+    test.cleanup_file(&keypair, &user_id, &file_ids[0]).await?;
+    test.cleanup_file(&keypair, &user_id, &file_ids[1]).await?;
 
     for file_id in file_ids {
         let files = FileDetails::get_by_ids(

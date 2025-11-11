@@ -50,7 +50,7 @@ async fn test_delete_pubkyapp_file() -> Result<()> {
     let file_before_delete = files_before_delete[0].as_ref();
     assert!(file_before_delete.is_some());
 
-    test.cleanup_file(&keypair, &keypair, &keypair, &user_id, &file_id).await?;
+    test.cleanup_file(&keypair, &user_id, &file_id).await?;
 
     // Assert
     let files = FileDetails::get_by_ids(

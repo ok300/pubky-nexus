@@ -78,7 +78,7 @@ async fn test_homeserver_post_with_reply_repost_cannot_index() -> Result<()> {
         _ => panic!("The error type has to be MissingDependency type"),
     };
 
-    test.del(&repost_reply_url).await?;
+    test.del(&keypair, &repost_reply_url).await?;
 
     let del_index_key = format!(
         "{}:{}",

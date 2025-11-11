@@ -52,7 +52,7 @@ async fn test_homeserver_bookmark_without_user() -> Result<()> {
     // Switch OFF the event processor to simulate the pending events to index
     test = test.remove_event_processing().await;
     // Put bookmark
-    test.put(&bookmark_url, bookmark).await?;
+    test.put(&keypair, &bookmark_url, bookmark).await?;
 
     // Create raw event line to retrieve the content from the homeserver
     let bookmark_event = format!("PUT {bookmark_url}");

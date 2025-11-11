@@ -47,7 +47,9 @@ async fn test_homeserver_post_repost_without_post_parent() -> Result<(), DynErro
         attachments: None,
     };
 
-    let post_id = test.create_post(&post_author_id, &post).await?;
+    let post_id = test
+        .create_post(&post_author_user_keypair, &post_author_id, &post)
+        .await?;
 
     // Create repost
     let repost = PubkyAppPost {
@@ -60,7 +62,9 @@ async fn test_homeserver_post_repost_without_post_parent() -> Result<(), DynErro
         }),
         attachments: None,
     };
-    let repost_id = test.create_post(&repost_author_id, &repost).await?;
+    let repost_id = test
+        .create_post(&post_repost_author_keypair, &repost_author_id, &repost)
+        .await?;
 
     // Create raw event line to retrieve the content from the homeserver
     let repost_uri = post_uri_builder(repost_author_id, repost_id);

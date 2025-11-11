@@ -72,7 +72,7 @@ async fn test_homeserver_user_tag_event_to_queue() -> Result<()> {
         _ => panic!("The error type has to be MissingDependency type"),
     };
 
-    test.del(&tag_url).await?;
+    test.del(&tagger_keypair, &tag_url).await?;
 
     let del_index_key = format!(
         "{}:{}",

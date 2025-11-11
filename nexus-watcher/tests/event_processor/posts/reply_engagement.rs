@@ -139,7 +139,7 @@ async fn test_homeserver_reply_engagement_control() -> Result<()> {
     };
 
     let tag_url = tag_uri_builder(tagger_user_id, tag.create_id());
-    test.put(&tag_url, tag).await?;
+    test.put(&tagger_keypair, &tag_url, tag).await?;
 
     // Check if reply post is not in total engagement index: Sorted:Posts:Global:TotalEngagement:user_id:post_id
     let total_engagement = check_member_total_engagement_user_posts(&[&author_id, &reply_id])
@@ -152,7 +152,7 @@ async fn test_homeserver_reply_engagement_control() -> Result<()> {
 
     // Start deleting the posts and tags added to the reply
     // Delete the reply
-    test.cleanup_post(&keypair, &keypair, &keypair, &author_id, &reply_reply_id).await?;
+    test.cleanup_post(&keypair, &author_id, &reply_reply_id).await?;
 
     // Check if reply post is not in total engagement index: Sorted:Posts:Global:TotalEngagement:user_id:post_id
     let total_engagement = check_member_total_engagement_user_posts(&[&author_id, &reply_id])
@@ -163,7 +163,7 @@ async fn test_homeserver_reply_engagement_control() -> Result<()> {
         "Replies score cannot be decremented in the total engagement list after deleting a reply"
     );
 
-    test.cleanup_post(&keypair, &keypair, &keypair, &author_id, &reply_repost_id).await?;
+    test.cleanup_post(&keypair, &author_id, &reply_repost_id).await?;
 
     // Check if reply post is not in total engagement index: Sorted:Posts:Global:TotalEngagement:user_id:post_id
     let total_engagement = check_member_total_engagement_user_posts(&[&author_id, &reply_id])
@@ -182,7 +182,7 @@ async fn test_homeserver_reply_engagement_control() -> Result<()> {
         "Repost cannot be in global timeline after deletion"
     );
 
-    test.del(&tag_url).await?;
+    test.del(&tagger_keypair, &tag_url).await?;
 
     // Check if reply post is not in total engagement index: Sorted:Posts:Global:TotalEngagement:user_id:post_id
     let total_engagement = check_member_total_engagement_user_posts(&[&author_id, &reply_id])

@@ -54,7 +54,7 @@ async fn test_delete_post_that_replied_notification() -> Result<()> {
     let reply_id = test.create_post(&keypair, &replier_id, &reply).await?;
 
     // Delete the reply
-    test.cleanup_post(&keypair, &keypair, &keypair, &replier_id, &reply_id).await?;
+    test.cleanup_post(&keypair, &replier_id, &reply_id).await?;
 
     // Verify that the poster gets the correct notification
     let notifications = Notification::get_by_id(&poster_id, Pagination::default())

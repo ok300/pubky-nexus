@@ -91,7 +91,7 @@ async fn test_homeserver_unbookmark() -> Result<()> {
     assert_eq!(user_counts.bookmarks, 0);
 
     // Cleanup user and post
-    test.cleanup_post(&keypair, &keypair, &author_keypair, &author_id, &post_id).await?;
+    test.cleanup_post(&author_keypair, &author_id, &post_id).await?;
     test.cleanup_user(&keypair, &bookmarker_id).await?;
     test.cleanup_user(&author_keypair, &author_id).await?;
 

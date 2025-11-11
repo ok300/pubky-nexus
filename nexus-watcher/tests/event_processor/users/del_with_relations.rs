@@ -78,7 +78,7 @@ async fn test_delete_user_with_relationships() -> Result<()> {
     );
 
     // Now delete the user's post
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &user_id, &post_id).await?;
 
     // Write and delete the user again; this time it should be fully removed
     test.create_profile(&keypair, &user_id, &user).await?;
@@ -202,13 +202,13 @@ async fn test_delete_user_with_relationships() -> Result<()> {
     );
 
     // Now delete the user's post
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_with_id, &post_b_id).await?;
+    test.cleanup_post(&keypair, &user_with_id, &post_b_id).await?;
 
     // Write and delete the user again; this time it should be fully removed
     test.create_profile(&keypair, &user_with_id, &user_with).await?;
     test.cleanup_user(&keypair, &user_with_id).await?;
     // Delete the file
-    test.cleanup_file(&keypair, &keypair, &keypair, &user_with_id, &file_id).await?;
+    test.cleanup_file(&keypair, &user_with_id, &file_id).await?;
 
     // Attempt to find user details; should not exist
     let user_details_result = find_user_details(&user_with_id).await;
@@ -245,7 +245,7 @@ async fn test_delete_recommended_user() -> Result<()> {
     let mut test = WatcherTest::setup().await?;
 
     let fn_create_user =
-        async |test: &mut WatcherTest, keypair: Keypair, name: &str| -> Result<String> {
+        async |test: &mut WatcherTest, keypair: &Keypair, name: &str| -> Result<String> {
             let user = PubkyAppUser {
                 bio: Some("test_delete_user_with_relationships".to_string()),
                 image: None,
@@ -260,14 +260,14 @@ async fn test_delete_recommended_user() -> Result<()> {
     let keypair_alice = Keypair::random();
     let keypair_bob = Keypair::random();
     let keypair_carol = Keypair::random();
-    let alice_id = fn_create_user(&mut test, keypair_alice, "Alice").await?;
-    let bob_id = fn_create_user(&mut test, keypair_bob, "Bob").await?;
-    let carol_id = fn_create_user(&mut test, keypair_carol, "Carol").await?;
+    let alice_id = fn_create_user(&mut test, &keypair_alice, "Alice").await?;
+    let bob_id = fn_create_user(&mut test, &keypair_bob, "Bob").await?;
+    let carol_id = fn_create_user(&mut test, &keypair_carol, "Carol").await?;
 
     // Alice follows Bob, Bob follows Carol
     // Carol is in Alice's social graph, but not directly followed
-    test.create_follow(&alice_id, &bob_id).await?;
-    test.create_follow(&bob_id, &carol_id).await?;
+    test.create_follow(&keypair_alice, &alice_id, &bob_id).await?;
+    test.create_follow(&keypair_bob, &bob_id, &carol_id).await?;
 
     // Carol is an active user (has at least 5 posts)
     for i in 0..5 {
@@ -278,7 +278,7 @@ async fn test_delete_recommended_user() -> Result<()> {
             embed: None,
             attachments: None,
         };
-        test.create_post(&carol_id, &post).await?;
+        test.create_post(&keypair_carol, &carol_id, &post).await?;
     }
 
     // Check if Carol is recommended to Alice
@@ -288,7 +288,7 @@ async fn test_delete_recommended_user() -> Result<()> {
     assert_eq!(alice_recommended_ids_1.first(), Some(&carol_id));
 
     // Carol deletes her user
-    test.cleanup_user(&carol_id).await?;
+    test.cleanup_user(&keypair_carol, &carol_id).await?;
 
     // Check if Carol is not recommended anymore to Alice
     let alice_recommended_ids_res_2 = UserStream::get_recommended_ids(&alice_id, None).await;

@@ -118,12 +118,12 @@ async fn test_homeserver_post_reply_notification() -> Result<()> {
     }
 
     // DEL post.
-    test.cleanup_post(&alice_keypair, &alice_keypair, &alice_keypair, &alice_id, &alice_reply_id).await?;
-    test.cleanup_post(&alice_keypair, &alice_keypair, &alice_keypair, &bob_id, &bob_reply_id).await?;
+    test.cleanup_post(&alice_keypair, &alice_id, &alice_reply_id).await?;
+    test.cleanup_post(&bob_keypair, &bob_id, &bob_reply_id).await?;
 
     // Cleanup
     test.cleanup_user(&alice_keypair, &alice_id).await?;
-    test.cleanup_post(&alice_keypair, &alice_keypair, &alice_keypair, &alice_id, &alice_post_id).await?;
+    test.cleanup_post(&alice_keypair, &alice_id, &alice_post_id).await?;
 
     Ok(())
 }

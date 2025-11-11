@@ -208,7 +208,7 @@ async fn test_large_network_scenario_counts() -> Result<()> {
     }
 
     // Users unfollow other users
-    for user_id in user_ids.iter() {
+    for (i, user_id) in user_ids.iter().enumerate() {
         // Get list of users this user is following
         let following_set = &mut user_followings.get_mut(user_id).unwrap();
         let following: Vec<String> = following_set.iter().cloned().collect();
@@ -225,7 +225,7 @@ async fn test_large_network_scenario_counts() -> Result<()> {
             let target_user_id = &following[target_index];
             if unfollowed.insert(target_user_id.clone()) {
                 let follow_uri = follow_uri_builder(user_id.into(), target_user_id.into());
-                test.del(&follow_uri).await?;
+                test.del(&keypairs[i], &follow_uri).await?;
                 following_set.remove(target_user_id);
                 total_unfollows += 1;
             }

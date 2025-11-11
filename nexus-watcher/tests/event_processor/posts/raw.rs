@@ -90,7 +90,7 @@ async fn test_homeserver_put_post_event() -> Result<()> {
 
     // Cleanup
     test.cleanup_user(&keypair, &user_id).await?;
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &user_id, &post_id).await?;
 
     // // TODO: Impl DEL post. Assert the new post does not exist in Nexus
     // let result_post = PostView::get_by_id(&user_id, &post_id, None, None, None)

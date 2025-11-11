@@ -48,10 +48,10 @@ async fn test_homeserver_del_tag_to_another_user() -> Result<()> {
     let tag_url = tag_uri_builder(tagger_user_id.clone(), tag.create_id());
 
     // Put tag
-    test.put(&tagged_keypair, tag_url.as_str(), tag).await?;
+    test.put(&tagger_keypair, tag_url.as_str(), tag).await?;
 
     // Step 3: Delete the tag
-    test.del(&tag_url).await?;
+    test.del(&tagger_keypair, &tag_url).await?;
 
     // Step 4: Assert tag deletion
     // GRAPH_OP: Check if the tag node was deleted

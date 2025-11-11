@@ -57,7 +57,7 @@ async fn test_edit_tagged_post_notification() -> Result<()> {
     let tag_url = tag_uri_builder(user_b_id.clone(), tag_id);
 
     // Put tag
-    test.put(&tag_url, tag).await?;
+    test.put(&keypair_b, &tag_url, tag).await?;
 
     // User A edits their post
     post.content = "Edited post by User A".to_string();

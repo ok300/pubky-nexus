@@ -50,7 +50,7 @@ async fn test_homeserver_tag_cannot_add_while_index() -> Result<()> {
     let tag_url = tag_uri_builder(shadow_user_id.clone(), tag.create_id());
 
     // PUT user tag
-    test.put(&tagged_keypair, tag_url.as_str(), tag_blob).await?;
+    test.put(&shadow_keypair, tag_url.as_str(), tag_blob).await?;
 
     // Create raw event line to retrieve the content from the homeserver
     let tag_event = format!("PUT {tag_url}");
@@ -102,7 +102,7 @@ async fn test_homeserver_tag_cannot_add_while_index() -> Result<()> {
     let tag_blob = serde_json::to_vec(&tag)?;
     let tag_url = tag_uri_builder(shadow_user_id, tag.create_id());
     // PUT post tag
-    test.put(&tag_url, tag_blob).await?;
+    test.put(&shadow_keypair, &tag_url, tag_blob).await?;
 
     // Create raw event line to retrieve the content from the homeserver
     let tag_event = format!("PUT {tag_url}");

@@ -32,10 +32,10 @@ async fn test_homeserver_del_mute() -> Result<()> {
     let mutee_id = test.create_user(&mutee_keypair, &mutee_user).await?;
 
     // Mute the user
-    let mute_uri = test.create_mute(&muter_id, &mutee_id).await?;
+    let mute_uri = test.create_mute(&muter_keypair, &muter_id, &mutee_id).await?;
 
     // Unmute the user
-    test.del(&mute_uri).await?;
+    test.del(&muter_keypair, &mute_uri).await?;
 
     // Assert if the mute relationship was deleted from graph
     let exist = find_mute_relationship(&muter_id, &mutee_id).await?;

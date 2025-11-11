@@ -172,7 +172,7 @@ async fn test_homeserver_post_repost() -> Result<()> {
     );
 
     // // TODO: Impl DEL post. Assert the repost does not exist in Nexus
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &repost_id).await?;
+    test.cleanup_post(&keypair, &user_id, &repost_id).await?;
     // let result_post = PostView::get_by_id(&user_id, &post_id, None, None, None)
     //     .await
     //     .unwrap();
@@ -181,7 +181,7 @@ async fn test_homeserver_post_repost() -> Result<()> {
 
     // Cleanup
     test.cleanup_user(&keypair, &user_id).await?;
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &parent_post_id).await?;
+    test.cleanup_post(&keypair, &user_id, &parent_post_id).await?;
 
     Ok(())
 }

@@ -59,7 +59,7 @@ async fn test_delete_post_that_reposted_notification() -> Result<()> {
     let repost_id = test.create_post(&keypair, &reposter_id, &repost).await?;
 
     // Delete the repost
-    test.cleanup_post(&keypair, &keypair, &keypair, &reposter_id, &repost_id).await?;
+    test.cleanup_post(&keypair, &reposter_id, &repost_id).await?;
 
     // Verify that the poster gets the correct notification
     let notifications = Notification::get_by_id(&poster_id, Pagination::default())

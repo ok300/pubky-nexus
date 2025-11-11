@@ -42,7 +42,7 @@ async fn test_moderated_user_lifecycle() -> Result<()> {
         created_at: Utc::now().timestamp_millis(),
     };
     let tag_url = tag_uri_builder(moderator_id, tag.create_id());
-    test.put(&tag_url, tag.clone()).await?;
+    test.put(&mod_key, &tag_url, tag.clone()).await?;
 
     // 5. Confirm the user no longer exists
     let details = find_user_details(&target_id).await;
@@ -57,7 +57,7 @@ async fn test_moderated_user_lifecycle() -> Result<()> {
         status: None,
     };
     let profile_url = format!("pubky://{target_id}/pub/pubky.app/profile.json");
-    test.put(&profile_url, new_profile).await?;
+    test.put(&user_key, &profile_url, new_profile).await?;
 
     let details = find_user_details(&target_id).await?;
     assert_eq!(details.bio, Some("i am back, will behave".to_string()));
@@ -69,10 +69,10 @@ async fn test_moderated_user_lifecycle() -> Result<()> {
         created_at: Utc::now().timestamp_millis(),
     };
     let selftag_url = tag_uri_builder(target_id.clone(), self_tag.create_id());
-    test.put(&selftag_url, self_tag).await?;
+    test.put(&user_key, &selftag_url, self_tag).await?;
 
     // 8. Tag the target user with the moderation label
-    test.put(&tag_url, tag).await?;
+    test.put(&mod_key, &tag_url, tag).await?;
 
     // 9. Confirm the user does exist but the profile has been cleaned
     let details = find_user_details(&target_id).await?;

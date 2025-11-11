@@ -43,7 +43,7 @@ async fn test_homeserver_bookmark() -> Result<()> {
     let bookmark_url = bookmark_uri_builder(user_id.clone(), bookmark_id.clone());
 
     // Put bookmark
-    test.put(&bookmark_url, bookmark).await.unwrap();
+    test.put(&keypair, &bookmark_url, bookmark).await.unwrap();
 
     // Step 4: Verify the bookmark exists in Nexus
     // GRAPH_OP: Assert if the event writes the graph
@@ -80,7 +80,7 @@ async fn test_homeserver_bookmark() -> Result<()> {
     assert_eq!(bookmark.id, bookmark_id, "Bookmark ids does not match");
 
     // Cleanup user and post
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &user_id, &post_id).await?;
     test.cleanup_user(&keypair, &user_id).await?;
 
     Ok(())

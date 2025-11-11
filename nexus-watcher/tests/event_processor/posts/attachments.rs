@@ -58,7 +58,7 @@ async fn test_homeserver_post_attachments() -> Result<()> {
     assert_eq!(post_details.attachments, Some(vec![file_url]));
     // Cleanup
     test.cleanup_user(&keypair, &user_id).await?;
-    test.cleanup_post(&keypair, &keypair, &keypair, &user_id, &post_id).await?;
+    test.cleanup_post(&keypair, &user_id, &post_id).await?;
 
     Ok(())
 }

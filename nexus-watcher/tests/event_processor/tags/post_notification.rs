@@ -109,7 +109,7 @@ async fn test_homeserver_tag_post_notification() -> Result<()> {
     }
 
     // Cleanup
-    test.cleanup_post(&author_keypair, &author_keypair, &author_keypair, &author_id, &post_id).await?;
+    test.cleanup_post(&author_keypair, &author_id, &post_id).await?;
     test.cleanup_user(&author_keypair, &author_id).await?;
     test.cleanup_user(&tagger_keypair, &tagger_id).await?;
 
