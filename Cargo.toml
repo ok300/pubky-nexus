@@ -19,10 +19,12 @@ neo4rs = "0.8.0"
 opentelemetry = "0.31"
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
 # pubky = "0.5.4"
-pubky = { git = "https://github.com/pubky/pubky-core.git", package = "pubky", branch = "dev-sep25" }
+# PR 264: https://github.com/pubky/pubky-core/pull/264
+pubky = { git = "https://github.com/pubky/pubky-core.git", package = "pubky", branch = "fix/feed-cursor-empty" }
 pubky-app-specs = { version = "0.4.0", features = ["openapi"] }
 # pubky-testnet = "0.5.4"
-pubky-testnet = { git = "https://github.com/pubky/pubky-core.git", package = "pubky-testnet", branch = "dev-sep25" }
+# PR 264: https://github.com/pubky/pubky-core/pull/264
+pubky-testnet = { git = "https://github.com/pubky/pubky-core.git", package = "pubky-testnet", branch = "fix/feed-cursor-empty" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.145"
 tempfile = { version = "3.23" }
