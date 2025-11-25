@@ -15,7 +15,7 @@ pub use details::UserDetails;
 pub use influencers::Influencers;
 pub use muted::Muted;
 pub use relationship::Relationship;
-pub use search::{UserSearch, USER_NAME_KEY_PARTS};
+pub use search::{UserSearch, USER_ID_KEY_PARTS, USER_NAME_KEY_PARTS};
 pub use stream::{
     UserIdStream, UserStream, UserStreamInput, UserStreamSource, USER_INFLUENCERS_KEY_PARTS,
     USER_MOSTFOLLOWED_KEY_PARTS,
