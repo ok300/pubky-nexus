@@ -18,6 +18,7 @@ use nexus_common::utils::create_shutdown_rx;
 use nexus_common::{DaemonConfig, WatcherConfig};
 use pubky_app_specs::PubkyId;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::watch::Receiver;
 use tokio::time::Duration;
 use tracing::{debug, error, info};
@@ -85,8 +86,8 @@ impl NexusWatcher {
         Homeserver::persist_if_unknown(config_hs).await?;
 
         let mut interval = tokio::time::interval(Duration::from_millis(config.watcher_sleep));
-        let ev_processor_runner =
-            std::sync::Arc::new(EventProcessorRunner::from_config(&config, shutdown_rx.clone()));
+        let ev_processor_runner = EventProcessorRunner::from_config(&config, shutdown_rx.clone());
+        let ev_processor_runner_arc = Arc::new(ev_processor_runner);
 
         loop {
             tokio::select! {
@@ -98,13 +99,13 @@ impl NexusWatcher {
                     debug!("Indexing homeservers…");
 
                     // Run default homeserver processing in its own thread
-                    let runner_default = ev_processor_runner.clone();
+                    let runner_default = ev_processor_runner_arc.clone();
                     let default_handle = tokio::spawn(async move {
                         runner_default.run_default().await
                     });
 
                     // Run other homeservers processing in parallel
-                    let runner_others = ev_processor_runner.clone();
+                    let runner_others = ev_processor_runner_arc.clone();
                     let others_handle = tokio::spawn(async move {
                         runner_others.run_all().await
                     });
