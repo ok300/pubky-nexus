@@ -37,8 +37,17 @@ async fn test_event_processor_runner_excludes_default_homeserver() -> Result<(),
         !hs_ids.contains(&HS_IDS[3].to_string()),
         "Default homeserver should not be in homeservers_by_priority"
     );
-    // All other homeservers should be present
-    assert_eq!(hs_ids.len(), HS_IDS.len() - 1);
+    // The other homeservers we added (not the default) should be present in the result
+    for (idx, hs_id) in HS_IDS.iter().enumerate() {
+        if idx != 3 {
+            // Skip the default homeserver
+            assert!(
+                hs_ids.contains(&hs_id.to_string()),
+                "Homeserver {} should be in homeservers_by_priority",
+                hs_id
+            );
+        }
+    }
 
     Ok(())
 }
@@ -71,8 +80,17 @@ async fn test_mock_event_processor_runner_excludes_default_homeserver() -> Resul
         !hs_ids.contains(&HS_IDS[0].to_string()),
         "Default homeserver should not be in homeservers_by_priority"
     );
-    // All other homeservers should be present
-    assert_eq!(hs_ids.len(), HS_IDS.len() - 1);
+    // The other homeservers we added (not the default) should be present in the result
+    for (idx, hs_id) in HS_IDS.iter().enumerate() {
+        if idx != 0 {
+            // Skip the default homeserver (first one for mock)
+            assert!(
+                hs_ids.contains(&hs_id.to_string()),
+                "Homeserver {} should be in homeservers_by_priority",
+                hs_id
+            );
+        }
+    }
 
     Ok(())
 }
