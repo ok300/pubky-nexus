@@ -67,6 +67,14 @@ impl NexusWatcher {
         NexusWatcherBuilder(watcher_config).start(shutdown_rx).await
     }
 
+    /// Starts the Nexus Watcher with the given configuration.
+    ///
+    /// On each interval tick, two threads are started in parallel:
+    /// 1. One thread processes the default homeserver via [`TEventProcessorRunner::run_default`]
+    /// 2. Another thread processes all other homeservers via [`TEventProcessorRunner::run_all`]
+    ///
+    /// This parallel processing ensures the default homeserver is always processed promptly,
+    /// regardless of the load from other homeservers.
     pub async fn start(
         mut shutdown_rx: Receiver<bool>,
         config: WatcherConfig,
@@ -77,7 +85,8 @@ impl NexusWatcher {
         Homeserver::persist_if_unknown(config_hs).await?;
 
         let mut interval = tokio::time::interval(Duration::from_millis(config.watcher_sleep));
-        let ev_processor_runner = EventProcessorRunner::from_config(&config, shutdown_rx.clone());
+        let ev_processor_runner =
+            std::sync::Arc::new(EventProcessorRunner::from_config(&config, shutdown_rx.clone()));
 
         loop {
             tokio::select! {
@@ -87,10 +96,34 @@ impl NexusWatcher {
                 }
                 _ = interval.tick() => {
                     debug!("Indexing homeservers…");
-                    _ = ev_processor_runner
-                        .run_all()
-                        .await
-                        .inspect_err(|e| error!("Failed to start event processors run: {e}"));
+
+                    // Run default homeserver processing in its own thread
+                    let runner_default = ev_processor_runner.clone();
+                    let default_handle = tokio::spawn(async move {
+                        runner_default.run_default().await
+                    });
+
+                    // Run other homeservers processing in parallel
+                    let runner_others = ev_processor_runner.clone();
+                    let others_handle = tokio::spawn(async move {
+                        runner_others.run_all().await
+                    });
+
+                    // Wait for both threads to complete
+                    let (default_result, others_result) = tokio::join!(default_handle, others_handle);
+
+                    // Log any errors from the threads
+                    if let Err(e) = default_result {
+                        error!("Default homeserver processing thread error: {e}");
+                    } else if let Err(e) = default_result.unwrap() {
+                        error!("Failed to process default homeserver: {e}");
+                    }
+
+                    if let Err(e) = others_result {
+                        error!("Other homeservers processing thread error: {e}");
+                    } else if let Err(e) = others_result.unwrap() {
+                        error!("Failed to process other homeservers: {e}");
+                    }
                 }
             }
         }
