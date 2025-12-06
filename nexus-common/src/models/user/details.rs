@@ -102,6 +102,8 @@ impl UserDetails {
     pub async fn delete(user_id: &str) -> Result<(), DynError> {
         // Delete user_details on Redis
         Self::remove_from_index_multiple_json(&[&[user_id]]).await?;
+        // Delete user from sorted sets (UserSearch indexes)
+        UserSearch::delete_from_index(user_id).await?;
         // Delete user graph node;
         exec_single_row(queries::del::delete_user(user_id)).await?;
 
