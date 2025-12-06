@@ -18,18 +18,22 @@ use crate::service::{
 ///   don't share mutable state unless explicitly intended
 ///
 /// # Parallel Processing Model
-/// The runner supports parallel processing of homeservers:
-/// - [`run_default`] processes only the default homeserver from the configuration
-/// - [`run_all`] processes all other homeservers returned by [`homeservers_by_priority`],
+/// The runner supports parallel processing of homeservers. On each interval tick,
+/// two methods are designed to run concurrently:
+/// - [`TEventProcessorRunner::run_default`] processes only the default homeserver from the configuration
+/// - [`TEventProcessorRunner::run_all`] processes all other homeservers returned by [`TEventProcessorRunner::homeservers_by_priority`],
 ///   which excludes the default homeserver
+///
+/// This parallel execution ensures the default homeserver is always processed promptly,
+/// regardless of the load from other homeservers.
 #[async_trait::async_trait]
 pub trait TEventProcessorRunner {
     /// Returns the shutdown signal receiver
     fn shutdown_rx(&self) -> Receiver<bool>;
 
     /// Returns the default homeserver ID for this runner.
-    /// This homeserver is processed separately via [`run_default`] and is excluded
-    /// from [`homeservers_by_priority`].
+    /// This homeserver is processed separately via [`TEventProcessorRunner::run_default`] and is excluded
+    /// from [`TEventProcessorRunner::homeservers_by_priority`].
     fn default_homeserver(&self) -> &str;
 
     fn monitored_homeservers_limit(&self) -> usize;

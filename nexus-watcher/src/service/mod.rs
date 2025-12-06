@@ -113,16 +113,16 @@ impl NexusWatcher {
                     let (default_result, others_result) = tokio::join!(default_handle, others_handle);
 
                     // Log any errors from the threads
-                    if let Err(e) = default_result {
-                        error!("Default homeserver processing thread error: {e}");
-                    } else if let Err(e) = default_result.unwrap() {
-                        error!("Failed to process default homeserver: {e}");
+                    match default_result {
+                        Err(e) => error!("Default homeserver processing thread error: {e}"),
+                        Ok(Err(e)) => error!("Failed to process default homeserver: {e}"),
+                        Ok(Ok(_)) => {}
                     }
 
-                    if let Err(e) = others_result {
-                        error!("Other homeservers processing thread error: {e}");
-                    } else if let Err(e) = others_result.unwrap() {
-                        error!("Failed to process other homeservers: {e}");
+                    match others_result {
+                        Err(e) => error!("Other homeservers processing thread error: {e}"),
+                        Ok(Err(e)) => error!("Failed to process other homeservers: {e}"),
+                        Ok(Ok(_)) => {}
                     }
                 }
             }
