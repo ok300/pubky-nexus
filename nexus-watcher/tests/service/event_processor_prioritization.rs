@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 #[tokio_shared_rt::test(shared)]
-async fn test_event_processor_runner_default_homeserver_prioritization() -> Result<(), DynError> {
+async fn test_event_processor_runner_excludes_default_homeserver() -> Result<(), DynError> {
     // Initialize the test
     setup().await?;
 
@@ -31,16 +31,20 @@ async fn test_event_processor_runner_default_homeserver_prioritization() -> Resu
         hs.put_to_graph().await.unwrap();
     }
 
-    // Prioritize the default homeserver
+    // The default homeserver should be excluded from homeservers_by_priority
     let hs_ids = runner.homeservers_by_priority().await?;
-    assert_eq!(hs_ids[0], HS_IDS[3]);
+    assert!(
+        !hs_ids.contains(&HS_IDS[3].to_string()),
+        "Default homeserver should not be in homeservers_by_priority"
+    );
+    // All other homeservers should be present
+    assert_eq!(hs_ids.len(), HS_IDS.len() - 1);
 
     Ok(())
 }
 
 #[tokio_shared_rt::test(shared)]
-async fn test_mock_event_processor_runner_default_homeserver_prioritization() -> Result<(), DynError>
-{
+async fn test_mock_event_processor_runner_excludes_default_homeserver() -> Result<(), DynError> {
     // Initialize the test
     setup().await?;
 
@@ -61,9 +65,14 @@ async fn test_mock_event_processor_runner_default_homeserver_prioritization() ->
         hs.put_to_graph().await.unwrap();
     }
 
-    // Prioritize the default homeserver
+    // The default homeserver (first one) should be excluded from homeservers_by_priority
     let hs_ids = runner.homeservers_by_priority().await?;
-    assert_eq!(hs_ids[0], HS_IDS[0]);
+    assert!(
+        !hs_ids.contains(&HS_IDS[0].to_string()),
+        "Default homeserver should not be in homeservers_by_priority"
+    );
+    // All other homeservers should be present
+    assert_eq!(hs_ids.len(), HS_IDS.len() - 1);
 
     Ok(())
 }
