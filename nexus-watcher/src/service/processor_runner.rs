@@ -57,13 +57,12 @@ impl TEventProcessorRunner for EventProcessorRunner {
     async fn homeservers_by_priority(&self) -> Result<Vec<String>, DynError> {
         let mut hs_ids = Homeserver::get_all_from_graph().await?;
 
-        // Move default homeserver to index 0 if it exists in the array to prioritize its processing
+        // Remove default homeserver from the list as it is processed separately via run_default
         if let Some(default_pos) = hs_ids
             .iter()
             .position(|hs_id| hs_id == self.default_homeserver())
         {
-            let default_hs = hs_ids.remove(default_pos);
-            hs_ids.insert(0, default_hs);
+            hs_ids.remove(default_pos);
         }
 
         Ok(hs_ids)
