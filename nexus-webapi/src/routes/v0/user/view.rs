@@ -6,11 +6,16 @@ use nexus_common::models::tag::TagDetails;
 use nexus_common::models::user::UserView;
 use serde::Deserialize;
 use tracing::debug;
-use utoipa::OpenApi;
+use utoipa::{IntoParams, OpenApi, ToSchema};
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct ProfileQuery {
+    /// Viewer Pubky ID
     viewer_id: Option<String>,
+
+    /// User trusted network depth, user following users distance. Numbers bigger than 4 will be ignored
+    #[param(maximum = 4)]
     depth: Option<u8>,
 }
 
@@ -21,8 +26,7 @@ pub struct ProfileQuery {
     tag = "User",
     params(
         ("user_id" = String, Path, description = "User Pubky ID"),
-        ("viewer_id" = Option<String>, Query, description = "Viewer Pubky ID"),
-        ("depth" = Option<usize>, Query, description = "User trusted network depth, user following users distance. Numbers bigger than 4, will be ignored")
+        ProfileQuery
     ),
     responses(
         (status = 200, description = "User Profile", body = UserView),
@@ -47,5 +51,5 @@ pub async fn user_view_handler(
 }
 
 #[derive(OpenApi)]
-#[openapi(paths(user_view_handler), components(schemas(UserView, TagDetails)))]
+#[openapi(paths(user_view_handler), components(schemas(UserView, TagDetails, ProfileQuery)))]
 pub struct UserViewApiDoc;
