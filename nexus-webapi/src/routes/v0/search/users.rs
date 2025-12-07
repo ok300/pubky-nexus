@@ -4,15 +4,18 @@ use crate::{Error, Result};
 use axum::extract::{Path, Query};
 use axum::Json;
 use nexus_common::models::user::UserSearch;
-use nexus_common::types::Pagination;
 use serde::Deserialize;
 use tracing::debug;
-use utoipa::OpenApi;
+use utoipa::{IntoParams, OpenApi, ToSchema};
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct SearchQuery {
-    #[serde(flatten)]
-    pagination: Pagination,
+    /// Skip N results
+    skip: Option<usize>,
+
+    /// Limit the number of results
+    limit: Option<usize>,
 }
 
 #[utoipa::path(
@@ -22,8 +25,7 @@ pub struct SearchQuery {
     tag = "Search",
     params(
         ("prefix" = String, Path, description = "Username prefix to search for"),
-        ("skip" = Option<usize>, Query, description = "Skip N results"),
-        ("limit" = Option<usize>, Query, description = "Limit the number of results")
+        SearchQuery
     ),
     responses(
         (status = 200, description = "Search results", body = UserSearch),
@@ -42,8 +44,8 @@ pub async fn search_users_by_name_handler(
 
     debug!("GET {SEARCH_USERS_BY_NAME_ROUTE} username:{}", username);
 
-    let skip = query.pagination.skip.unwrap_or(0);
-    let limit = query.pagination.limit.unwrap_or(200);
+    let skip = query.skip.unwrap_or(0);
+    let limit = query.limit.unwrap_or(200);
 
     match UserSearch::get_by_name(&username, Some(skip), Some(limit)).await {
         Ok(Some(user_search)) => Ok(Json(user_search)),
@@ -59,8 +61,7 @@ pub async fn search_users_by_name_handler(
     tag = "Search",
     params(
         ("prefix" = String, Path, description = format!("User ID prefix to search for (at least {USER_ID_SEARCH_MIN_PREFIX_LEN} characters)")),
-        ("skip" = Option<usize>, Query, description = "Skip N results"),
-        ("limit" = Option<usize>, Query, description = "Limit the number of results")
+        SearchQuery
     ),
     responses(
         (status = 200, description = "Search results", body = UserSearch),
@@ -81,8 +82,8 @@ pub async fn search_users_by_id_handler(
 
     debug!("GET {SEARCH_USERS_BY_ID_ROUTE} ID:{}", id_prefix);
 
-    let skip = query.pagination.skip.unwrap_or(0);
-    let limit = query.pagination.limit.unwrap_or(200);
+    let skip = query.skip.unwrap_or(0);
+    let limit = query.limit.unwrap_or(200);
 
     match UserSearch::get_by_id(&id_prefix, Some(skip), Some(limit)).await {
         Ok(Some(user_search)) => Ok(Json(user_search)),
@@ -94,6 +95,6 @@ pub async fn search_users_by_id_handler(
 #[derive(OpenApi)]
 #[openapi(
     paths(search_users_by_name_handler, search_users_by_id_handler),
-    components(schemas(UserSearch))
+    components(schemas(UserSearch, SearchQuery))
 )]
 pub struct SearchUsersApiDocs;
