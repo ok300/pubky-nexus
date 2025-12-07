@@ -29,7 +29,7 @@ pub struct UserTagsQuery {
     /// Viewer Pubky ID
     pub viewer_id: Option<String>,
 
-    /// User trusted network depth, user following users distance. Numbers bigger than 4 will be ignored
+    /// User trusted network depth, user following users distance. Maximum value is 4
     #[param(maximum = 4)]
     pub depth: Option<u8>,
 }
@@ -87,7 +87,7 @@ pub struct UserTaggersQuery {
     /// Viewer Pubky ID
     pub viewer_id: Option<String>,
 
-    /// User trusted network depth, user following users distance. Numbers bigger than 4 will be ignored
+    /// User trusted network depth, user following users distance. Maximum value is 4
     #[param(maximum = 4)]
     pub depth: Option<u8>,
 }

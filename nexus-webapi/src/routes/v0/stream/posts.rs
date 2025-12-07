@@ -20,23 +20,19 @@ const MAX_TAGS: usize = 5;
 #[into_params(parameter_in = Query)]
 pub struct PostStreamQuery {
     /// Source of posts for streams with viewer (following, followers, friends, bookmarks, post_replies, author, author_replies, all)
-    #[serde(flatten, default)]
+    #[serde(flatten)]
     pub source: Option<StreamSource>,
 
     /// Skip N posts
-    #[serde(default)]
     pub skip: Option<usize>,
 
     /// Retrieve N posts
-    #[serde(default)]
     pub limit: Option<usize>,
 
     /// The start of the stream timeframe or score. Posts with a timestamp/score greater than this value will be excluded from the results
-    #[serde(default)]
     pub start: Option<f64>,
 
     /// The end of the stream timeframe or score. Posts with a timestamp/score less than this value will be excluded from the results
-    #[serde(default)]
     pub end: Option<f64>,
 
     /// Ordering of response list. Either 'ascending' or 'descending'. Defaults to descending

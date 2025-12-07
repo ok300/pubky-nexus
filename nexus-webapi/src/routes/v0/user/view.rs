@@ -14,7 +14,7 @@ pub struct ProfileQuery {
     /// Viewer Pubky ID
     viewer_id: Option<String>,
 
-    /// User trusted network depth, user following users distance. Numbers bigger than 4 will be ignored
+    /// User trusted network depth, user following users distance. Maximum value is 4
     #[param(maximum = 4)]
     depth: Option<u8>,
 }
