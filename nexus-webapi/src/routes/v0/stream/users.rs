@@ -6,23 +6,46 @@ use crate::{Error, Result};
 use axum::extract::Query;
 use axum::Json;
 use nexus_common::models::user::{UserIdStream, UserStream, UserStreamInput, UserStreamSource};
-use nexus_common::types::{Pagination, StreamReach, Timeframe};
+use nexus_common::types::{StreamReach, Timeframe};
 use serde::Deserialize;
 use tracing::debug;
-use utoipa::{OpenApi, ToSchema};
+use utoipa::{IntoParams, OpenApi, ToSchema};
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct UserStreamQuery {
+    /// User ID to use for streams with source 'following', 'followers', 'friends', 'muted', 'influencers' and 'recommended'
     user_id: Option<String>,
+
+    /// Viewer Pubky ID
     viewer_id: Option<String>,
+
+    /// Skip N users
     skip: Option<usize>,
+
+    /// Retrieve N users
     limit: Option<usize>,
+
+    /// Source of users for streams (followers, following, friends, muted, most_followed, influencers, recommended, post_replies)
     source: Option<UserStreamSource>,
+
+    /// The target reach of the source. Supported in 'influencers' source
     reach: Option<StreamReach>,
+
+    /// Author ID when source is 'post_replies'
     author_id: Option<String>,
+
+    /// Post ID when source is 'post_replies'
     post_id: Option<String>,
+
+    /// User trusted network depth, user following users distance. Numbers bigger than 3 will be ignored
+    #[param(maximum = 3)]
     depth: Option<u8>,
+
+    /// Timeframe for sources supporting a range
     timeframe: Option<Timeframe>,
+
+    /// Provide a random selection of size 3 for sources supporting preview. Passing preview ignores skip and limit parameters
     preview: Option<bool>,
 }
 
@@ -31,17 +54,7 @@ pub struct UserStreamQuery {
     path = STREAM_USERS_ROUTE,
     tag = "Stream",
     params(
-        ("source" = Option<UserStreamSource>, Query, description = "Source of users for streams (followers, following, friends, muted, most_followed, influencers, recommended, post_replies)"),
-        ("user_id" = Option<String>, Query, description = "User ID to use for streams with source 'following', 'followers', 'friends', 'muted', 'influencers' and 'recommended'"),
-        ("viewer_id" = Option<String>, Query, description = "Viewer Pubky ID"),
-        ("author_id" = Option<String>, Query, description = "Author ID when source is 'post_replies'"),
-        ("post_id" = Option<String>, Query, description = "Post ID when source is 'post_replies'"),
-        ("reach" = Option<StreamReach>, Query, description = "The target reach of the source. Supported in 'influencers' source."),
-        ("timeframe" = Option<Timeframe>, Query, description = "Timeframe for sources supporting a range"),
-        ("preview" = Option<bool>, Query, description = "Provide a random selection of size 3 for sources supporting preview. Passing preview ignores skip and limit parameters."),
-        ("depth" = Option<u8>, Query, description = "User trusted network depth, user following users distance. Numbers bigger than 3 will be ignored"),
-        ("skip" = Option<usize>, Query, description = "Skip N users"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N users")
+        UserStreamQuery
     ),
     responses(
         (status = 200, description = "Users stream", body = UserStream),
@@ -79,17 +92,7 @@ pub async fn stream_users_handler(
     path = STREAM_USER_IDS_ROUTE,
     tag = "Stream",
     params(
-        ("source" = Option<UserStreamSource>, Query, description = "Source of users for streams (followers, following, friends, muted, most_followed, influencers, recommended, post_replies)"),
-        ("user_id" = Option<String>, Query, description = "User ID to use for streams with source 'following', 'followers', 'friends', 'muted', 'influencers' and 'recommended'"),
-        ("viewer_id" = Option<String>, Query, description = "Viewer Pubky ID"),
-        ("author_id" = Option<String>, Query, description = "Author ID when source is 'post_replies'"),
-        ("post_id" = Option<String>, Query, description = "Post ID when source is 'post_replies'"),
-        ("reach" = Option<StreamReach>, Query, description = "The target reach of the source. Supported in 'influencers' source."),
-        ("timeframe" = Option<Timeframe>, Query, description = "Timeframe for sources supporting a range"),
-        ("preview" = Option<bool>, Query, description = "Provide a random selection of size 3 for sources supporting preview. Passing preview ignores skip and limit parameters."),
-        ("depth" = Option<u8>, Query, description = "User trusted network depth, user following users distance. Numbers bigger than 3 will be ignored"),
-        ("skip" = Option<usize>, Query, description = "Skip N users"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N users")
+        UserStreamQuery
     ),
     responses(
         (status = 200, description = "User IDs stream", body = UserIdStream),
@@ -125,12 +128,20 @@ pub async fn stream_user_ids_handler(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct UserStreamSearchQuery {
+    /// Username to search for
     username: String,
+
+    /// Viewer Pubky ID
     viewer_id: Option<String>,
-    #[serde(flatten)]
-    pagination: Pagination,
+
+    /// Skip N users
+    skip: Option<usize>,
+
+    /// Retrieve N users
+    limit: Option<usize>,
 }
 
 #[utoipa::path(
@@ -139,10 +150,7 @@ pub struct UserStreamSearchQuery {
     tag = "Stream",
     description = "Stream of user from username search result",
     params(
-        ("username" = String, Query, description = "Username to search for"),
-        ("viewer_id" = Option<String>, Query, description = "Viewer Pubky ID"),
-        ("skip" = Option<usize>, Query, description = "Skip N users"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N users")
+        UserStreamSearchQuery
     ),
     responses(
         (status = 200, description = "Username search stream", body = UserStream),
@@ -160,8 +168,8 @@ pub async fn stream_username_search_handler(
         });
     }
 
-    let skip = query.pagination.skip.unwrap_or(0);
-    let limit = query.pagination.limit.unwrap_or(20);
+    let skip = query.skip.unwrap_or(0);
+    let limit = query.limit.unwrap_or(20);
 
     debug!(
         "GET {STREAM_USERS_USERNAME_SEARCH_ROUTE}?username={}",
@@ -198,11 +206,6 @@ pub struct UserStreamByIdsRequest {
     tag = "Stream",
     description = "Stream users by ID. This is a POST request because we're passing a potentially large list of user IDs in the request body.",
     request_body = UserStreamByIdsRequest,
-    params(
-        ("user_ids" = Vec<String>, Path, description = "User Pubky ID array"),
-        ("viewer_id" = Option<String>, Query, description = "Viewer Pubky ID"),
-        ("depth" = Option<u8>, Query, description = "User trusted network depth, user following users distance. Numbers bigger than 4 will be ignored")
-    ),
     responses(
         (status = 200, description = "Users stream", body = UserStream),
         (status = 500, description = "Internal server error")
@@ -352,7 +355,9 @@ fn build_user_stream_input(
         UserStreamSource,
         UserStreamByIdsRequest,
         StreamReach,
-        Timeframe
+        Timeframe,
+        UserStreamQuery,
+        UserStreamSearchQuery
     ))
 )]
 pub struct StreamUsersApiDocs;

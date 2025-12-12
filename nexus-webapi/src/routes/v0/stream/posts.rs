@@ -12,28 +12,50 @@ use nexus_common::{
 use pubky_app_specs::PubkyAppPostKind;
 use serde::{de, Deserialize, Deserializer};
 use tracing::debug;
-use utoipa::{OpenApi, ToSchema};
+use utoipa::{IntoParams, OpenApi, ToSchema};
 
 const MAX_TAGS: usize = 5;
 
-#[derive(Deserialize, Debug, ToSchema)]
+#[derive(Deserialize, Debug, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct PostStreamQuery {
-    #[serde(flatten, default)]
-    pub source: Option<StreamSource>,
+    /// Source of posts for streams with viewer (following, followers, friends, bookmarks, post_replies, author, author_replies, all)
     #[serde(flatten)]
-    pub pagination: Pagination,
+    pub source: Option<StreamSource>,
+
+    /// Skip N posts
+    pub skip: Option<usize>,
+
+    /// Retrieve N posts
+    pub limit: Option<usize>,
+
+    /// The start of the stream timeframe or score. Posts with a timestamp/score greater than this value will be excluded from the results
+    pub start: Option<f64>,
+
+    /// The end of the stream timeframe or score. Posts with a timestamp/score less than this value will be excluded from the results
+    pub end: Option<f64>,
+
+    /// Ordering of response list. Either 'ascending' or 'descending'. Defaults to descending
     pub order: Option<SortOrder>,
+
+    /// StreamSorting method
     pub sorting: Option<StreamSorting>,
+
+    /// Viewer Pubky ID
     pub viewer_id: Option<String>,
+
+    /// Filter by a list of comma-separated tags (max 5). E.g.,`&tags=dev,free,opensource`. Only posts matching at least one of the tags will be returned
     #[serde(default, deserialize_with = "deserialize_comma_separated")]
     pub tags: Option<Vec<String>>,
+
+    /// Specifies the type of posts to retrieve: short, long, image, video, link and file
     pub kind: Option<PubkyAppPostKind>,
 }
 
 impl PostStreamQuery {
     pub fn initialize_defaults(&mut self) {
-        self.pagination.skip.get_or_insert(0);
-        self.pagination.limit = Some(self.pagination.limit.unwrap_or(10).min(30));
+        self.skip.get_or_insert(0);
+        self.limit = Some(self.limit.unwrap_or(10).min(30));
         self.sorting.get_or_insert(StreamSorting::Timeline);
     }
 
@@ -54,6 +76,15 @@ impl PostStreamQuery {
             }
         }
         Ok(())
+    }
+
+    pub fn pagination(&self) -> Pagination {
+        Pagination {
+            skip: self.skip,
+            limit: self.limit,
+            start: self.start,
+            end: self.end,
+        }
     }
 }
 
@@ -79,19 +110,7 @@ where
     path = STREAM_POSTS_ROUTE,
     tag = "Stream",
     params(
-        ("source" = Option<StreamSource>, Query, description = "Source of posts for streams with viewer (following, followers, friends, bookmarks, post_replies, author, author_replies, all)"),
-        ("viewer_id" = Option<String>, Query, description = "Viewer Pubky ID"),
-        ("observer_id" = Option<String>, Query, description = "Observer Pubky ID. The central point for streams with Reach"),
-        ("author_id" = Option<String>, Query, description = "Filter posts by an specific author User ID"),
-        ("post_id" = Option<String>, Query, description = "This parameter is needed when we want to retrieve the replies stream for a post"),
-        ("sorting" = Option<StreamSorting>, Query, description = "StreamSorting method"),
-        ("order" = Option<SortOrder>, Query, description = "Ordering of response list. Either 'ascending' or 'descending'. Defaults to descending."),
-        ("tags" = Option<Vec<String>>, Query, description = "Filter by a list of comma-separated tags (max 5). E.g.,`&tags=dev,free,opensource`. Only posts matching at least one of the tags will be returned."),
-        ("kind" = Option<PubkyAppPostKind>, Query, description = "Specifies the type of posts to retrieve: short, long, image, video, link and file"),
-        ("skip" = Option<usize>, Query, description = "Skip N posts"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N posts"),
-        ("start" = Option<usize>, Query, description = "The start of the stream timeframe or score. Posts with a timestamp/score greater than this value will be excluded from the results"),
-        ("end" = Option<usize>, Query, description = "The end of the stream timeframe or score. Posts with a timestamp/score less than this value will be excluded from the results"),
+        PostStreamQuery
     ),
     responses(
         (status = 200, description = "Posts stream", body = PostStream),
@@ -119,7 +138,7 @@ pub async fn stream_posts_handler(
 
     match PostStream::get_posts(
         source,
-        query.pagination,
+        query.pagination(),
         order,
         sorting,
         query.viewer_id,
@@ -139,18 +158,7 @@ pub async fn stream_posts_handler(
     path = STREAM_POST_KEYS_ROUTE,
     tag = "Stream",
     params(
-        ("source" = Option<StreamSource>, Query, description = "Source of posts for streams with viewer (following, followers, friends, bookmarks, post_replies, author, author_replies, all)"),
-        ("observer_id" = Option<String>, Query, description = "Observer Pubky ID. The central point for streams with Reach"),
-        ("author_id" = Option<String>, Query, description = "Filter posts by an specific author User ID"),
-        ("post_id" = Option<String>, Query, description = "This parameter is needed when we want to retrieve the replies stream for a post"),
-        ("sorting" = Option<StreamSorting>, Query, description = "StreamSorting method"),
-        ("order" = Option<SortOrder>, Query, description = "Ordering of response list. Either 'ascending' or 'descending'. Defaults to descending."),
-        ("tags" = Option<Vec<String>>, Query, description = "Filter by a list of comma-separated tags (max 5). E.g.,`&tags=dev,free,opensource`. Only posts matching at least one of the tags will be returned."),
-        ("kind" = Option<PubkyAppPostKind>, Query, description = "Specifies the type of posts to retrieve: short, long, image, video, link and file"),
-        ("skip" = Option<usize>, Query, description = "Skip N posts"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N posts"),
-        ("start" = Option<usize>, Query, description = "The start of the stream timeframe or score. Posts with a timestamp/score greater than this value will be excluded from the results"),
-        ("end" = Option<usize>, Query, description = "The end of the stream timeframe or score. Posts with a timestamp/score less than this value will be excluded from the results"),
+        PostStreamQuery
     ),
     responses(
         (status = 200, description = "Post key stream", body = PostKeyStream),
@@ -177,7 +185,7 @@ pub async fn stream_post_keys_handler(
 
     match PostStream::get_post_keys(
         source,
-        query.pagination,
+        query.pagination(),
         order,
         sorting,
         query.tags,
@@ -248,6 +256,6 @@ pub async fn stream_posts_by_ids_handler(
         stream_post_keys_handler,
         stream_posts_by_ids_handler
     ),
-    components(schemas(PostKeyStream, PostStream, StreamSorting, StreamSource, SortOrder))
+    components(schemas(PostKeyStream, PostStream, StreamSorting, StreamSource, SortOrder, PostStreamQuery))
 )]
 pub struct StreamPostsApiDocs;
