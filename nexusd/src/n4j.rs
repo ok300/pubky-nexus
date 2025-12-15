@@ -49,7 +49,9 @@ impl N4jOps {
 
         println!("Performing user lookups for Neo4j page cache warmup...");
 
-        // Get a sample of users
+        // Get a sample of users to warmup the page cache.
+        // Limit of 100 provides good coverage for typical graph sizes while
+        // keeping warmup time reasonable.
         let warmup_query = query(
             "MATCH (u:User) 
              WITH u LIMIT 100 
@@ -76,7 +78,9 @@ impl N4jOps {
 
         println!("Performing follow lookups for Neo4j page cache warmup...");
 
-        // Get a sample of users with followers
+        // Get a sample of users with followers to warmup the page cache.
+        // Limit of 50 top followed users provides good coverage of the follower
+        // relationships while keeping warmup time reasonable.
         let warmup_query = query(
             "MATCH (u:User)<-[:FOLLOWS]-(:User) 
              WITH u, COUNT(*) AS follower_count 
@@ -114,7 +118,9 @@ impl N4jOps {
         }
         println!();
 
-        // Perform measurements for each representative
+        // Perform measurements for each representative.
+        // 1000 iterations provides statistically meaningful results for
+        // benchmarking query performance while keeping total runtime manageable.
         const ITERATIONS: u32 = 1000;
 
         for (category, user_id, follower_count) in &representatives {
@@ -203,7 +209,14 @@ impl N4jOps {
 
         // Lowest followers (last)
         if let Some((user_id, count)) = users.last() {
-            if representatives.len() < 5 || user_id != &representatives.last().unwrap().1 {
+            // Add lowest followers if we don't have 5 representatives yet,
+            // or if this user is different from the last added representative
+            let should_add = representatives.len() < 5
+                || representatives
+                    .last()
+                    .map(|(_, id, _)| id != user_id)
+                    .unwrap_or(true);
+            if should_add {
                 representatives.push(("Lowest followers".to_string(), user_id.clone(), *count));
             }
         }
@@ -220,6 +233,10 @@ impl N4jOps {
     }
 
     /// Lookup followers at the specified degree (1 = direct followers, 2 = followers of followers, etc.)
+    ///
+    /// Note: Variable-length path patterns like `[:FOLLOWS*1..N]` can be expensive for high degrees
+    /// in large graphs. The degree is limited to 5 by the CLI commands to balance usefulness with
+    /// performance. For production use with very large graphs, consider query timeouts.
     async fn lookup_followers(user_id: &str, degree: u8) -> Result<Vec<String>, DynError> {
         // Build the query based on degree
         let query_str = match degree {
