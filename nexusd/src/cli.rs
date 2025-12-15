@@ -44,6 +44,10 @@ pub enum NexusCommands {
     #[command(subcommand)]
     Db(DbCommands),
 
+    /// Neo4j operations
+    #[command(subcommand)]
+    N4j(N4jCommands),
+
     /// Run both the API and the Watcher (default when no arguments are given)
     #[command(hide = true)]
     Run {
@@ -101,4 +105,36 @@ pub struct MigrationNewArgs {
     /// The name of the new migration
     #[arg(required = true)]
     pub name: String,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum N4jCommands {
+    /// Check connectivity to Neo4j
+    Check,
+
+    /// Perform user lookups to warmup Neo4j's page cache
+    UserWarmup,
+
+    /// Perform follow lookups to warmup Neo4j's page cache
+    FollowsWarmup,
+
+    /// Measure 1st degree fan-in (direct followers) performance
+    #[command(name = "follows-1")]
+    Follows1,
+
+    /// Measure 2nd degree fan-in (followers of followers) performance
+    #[command(name = "follows-2")]
+    Follows2,
+
+    /// Measure 3rd degree fan-in performance
+    #[command(name = "follows-3")]
+    Follows3,
+
+    /// Measure 4th degree fan-in performance
+    #[command(name = "follows-4")]
+    Follows4,
+
+    /// Measure 5th degree fan-in performance
+    #[command(name = "follows-5")]
+    Follows5,
 }
