@@ -281,6 +281,14 @@ pub async fn del(user_id: PubkyId, tag_id: String) -> Result<(), DynError> {
     Ok(())
 }
 
+/// Helper function to remove a tag from search suggestions if it's no longer used anywhere
+async fn cleanup_unused_tag(tag_label: &str) -> Result<(), DynError> {
+    if !TagSearch::label_exists_in_graph(tag_label).await? {
+        TagSearch::del_from_index(&[tag_label]).await?;
+    }
+    Ok(())
+}
+
 async fn del_sync_user(
     tagger_id: PubkyId,
     tagged_id: &str,
@@ -313,13 +321,7 @@ async fn del_sync_user(
                 .await?;
             Ok::<(), DynError>(())
         },
-        async {
-            // Check if the tag still exists in the graph, and if not, remove it from TagSearch
-            if !TagSearch::label_exists_in_graph(tag_label).await? {
-                TagSearch::del_from_index(&[tag_label]).await?;
-            }
-            Ok::<(), DynError>(())
-        }
+        cleanup_unused_tag(tag_label)
     );
 
     handle_indexing_results!(
@@ -394,13 +396,7 @@ async fn del_sync_post(
             PostsByTagSearch::del_from_index(author_id, post_id, tag_label).await?;
             Ok::<(), DynError>(())
         },
-        async {
-            // Check if the tag still exists in the graph, and if not, remove it from TagSearch
-            if !TagSearch::label_exists_in_graph(tag_label).await? {
-                TagSearch::del_from_index(&[tag_label]).await?;
-            }
-            Ok::<(), DynError>(())
-        }
+        cleanup_unused_tag(tag_label)
     );
 
     handle_indexing_results!(
