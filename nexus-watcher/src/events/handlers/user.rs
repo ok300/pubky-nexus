@@ -56,12 +56,12 @@ pub async fn del(user_id: PubkyId) -> Result<(), DynError> {
     // 1. Graph query to check if there is any edge at all to this user.
     let query = user_is_safe_to_delete(&user_id);
 
-    // 2. If there is no relationships (OperationOutcome::CreatedOrDeleted), delete from graph and redis.
+    // 2. If there is no relationships (OperationOutcome::Created | OperationOutcome::Deleted), delete from graph and redis.
     // 3. But if there is any relationship (OperationOutcome::Updated), then we simply update the user with empty profile
     // and keyword username [DELETED].
     // A deleted user is a user whose profile is empty and has username `"[DELETED]"`
     match execute_graph_operation(query).await? {
-        OperationOutcome::CreatedOrDeleted => {
+        OperationOutcome::Created | OperationOutcome::Deleted => {
             let indexing_results =
                 tokio::join!(UserDetails::delete(&user_id), UserCounts::delete(&user_id));
             handle_indexing_results!(indexing_results.0, indexing_results.1)

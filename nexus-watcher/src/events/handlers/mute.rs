@@ -15,7 +15,7 @@ pub async fn sync_put(user_id: PubkyId, muted_id: PubkyId) -> Result<(), DynErro
             let dependency = vec![key];
             Err(EventProcessorError::MissingDependency { dependency }.into())
         }
-        OperationOutcome::CreatedOrDeleted => {
+        OperationOutcome::Created | OperationOutcome::Deleted => {
             Muted(vec![muted_id.to_string()])
                 .put_to_index(&user_id)
                 .await
@@ -36,7 +36,7 @@ pub async fn sync_del(user_id: PubkyId, muted_id: PubkyId) -> Result<(), DynErro
     match Muted::del_from_graph(&user_id, &muted_id).await? {
         OperationOutcome::Updated => Ok(()),
         OperationOutcome::MissingDependency => Err(EventProcessorError::SkipIndexing.into()),
-        OperationOutcome::CreatedOrDeleted => {
+        OperationOutcome::Created | OperationOutcome::Deleted => {
             Muted(vec![muted_id.to_string()])
                 .del_from_index(&user_id)
                 .await

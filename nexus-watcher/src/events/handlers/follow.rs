@@ -29,7 +29,7 @@ pub async fn sync_put(follower_id: PubkyId, followee_id: PubkyId) -> Result<(), 
             return Err(EventProcessorError::MissingDependency { dependency }.into());
         }
         // The relationship did not exist, create all related indexes
-        OperationOutcome::CreatedOrDeleted => {
+        OperationOutcome::Created | OperationOutcome::Deleted => {
             // Checks whether the followee was following the follower (Is this a new friendship?)
             let will_be_friends =
                 is_followee_following_follower(&follower_id, &followee_id).await?;
@@ -76,7 +76,7 @@ pub async fn sync_del(follower_id: PubkyId, followee_id: PubkyId) -> Result<(), 
         // Both users exists but they do not have that relationship
         OperationOutcome::Updated => Ok(()),
         OperationOutcome::MissingDependency => Err(EventProcessorError::SkipIndexing.into()),
-        OperationOutcome::CreatedOrDeleted => {
+        OperationOutcome::Created | OperationOutcome::Deleted => {
             // Check if the users are friends. Is this a break? :(
             let were_friends = Friends::check(&follower_id, &followee_id).await?;
 

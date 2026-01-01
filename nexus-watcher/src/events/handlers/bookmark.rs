@@ -27,7 +27,7 @@ pub async fn sync_put(
     let indexed_at = Utc::now().timestamp_millis();
     let existed =
         match Bookmark::put_to_graph(&author_id, &post_id, &user_id, &id, indexed_at).await? {
-            OperationOutcome::CreatedOrDeleted => false,
+            OperationOutcome::Created | OperationOutcome::Deleted => false,
             OperationOutcome::Updated => true,
             OperationOutcome::MissingDependency => {
                 let dependency = vec![format!("{author_id}:posts:{post_id}")];

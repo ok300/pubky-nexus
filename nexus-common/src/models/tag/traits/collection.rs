@@ -1,6 +1,6 @@
 use crate::db::kv::{ScoreAction, SortOrder};
 use crate::db::{
-    execute_graph_operation, fetch_row_from_graph, queries, OperationOutcome, RedisOps,
+    execute_graph_put_operation, fetch_row_from_graph, queries, OperationOutcome, RedisOps,
 };
 use crate::types::DynError;
 use async_trait::async_trait;
@@ -342,7 +342,7 @@ where
                 indexed_at,
             ),
         };
-        execute_graph_operation(query).await
+        execute_graph_put_operation(query).await
     }
 
     /// Reindexes tags for a given author by retrieving data from the graph database and updating the index.

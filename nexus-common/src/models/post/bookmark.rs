@@ -1,5 +1,5 @@
 use crate::db::{
-    execute_graph_operation, fetch_all_rows_from_graph, fetch_key_from_graph, queries,
+    execute_graph_put_operation, fetch_all_rows_from_graph, fetch_key_from_graph, queries,
     OperationOutcome, RedisOps,
 };
 use crate::types::DynError;
@@ -33,7 +33,7 @@ impl Bookmark {
             indexed_at,
         );
 
-        execute_graph_operation(query).await
+        execute_graph_put_operation(query).await
     }
 
     /// Retrieves counts by user ID, first trying to get from Redis, then from Neo4j if not found.

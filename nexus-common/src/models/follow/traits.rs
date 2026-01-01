@@ -1,5 +1,5 @@
 use crate::db::{
-    execute_graph_operation, fetch_row_from_graph, queries, OperationOutcome, RedisOps,
+    execute_graph_put_operation, execute_graph_delete_operation, fetch_row_from_graph, queries, OperationOutcome, RedisOps,
 };
 use crate::types::DynError;
 use async_trait::async_trait;
@@ -16,7 +16,7 @@ pub trait UserFollows: Sized + RedisOps + AsRef<[String]> + Default {
     ) -> Result<OperationOutcome, DynError> {
         let indexed_at = Utc::now().timestamp_millis();
         let query = queries::put::create_follow(follower_id, followee_id, indexed_at);
-        execute_graph_operation(query).await
+        execute_graph_put_operation(query).await
     }
 
     async fn get_by_id(
@@ -92,7 +92,7 @@ pub trait UserFollows: Sized + RedisOps + AsRef<[String]> + Default {
         followee_id: &str,
     ) -> Result<OperationOutcome, DynError> {
         let query = queries::del::delete_follow(follower_id, followee_id);
-        execute_graph_operation(query).await
+        execute_graph_delete_operation(query).await
     }
 
     async fn del_from_index(&self, user_id: &str) -> Result<(), DynError> {

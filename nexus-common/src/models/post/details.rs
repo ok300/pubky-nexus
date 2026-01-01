@@ -1,6 +1,6 @@
 use super::{PostRelationships, PostStream};
 use crate::db::{
-    exec_single_row, execute_graph_operation, fetch_row_from_graph, queries, OperationOutcome,
+    exec_single_row, execute_graph_put_operation, fetch_row_from_graph, queries, OperationOutcome,
     RedisOps,
 };
 use crate::types::DynError;
@@ -141,7 +141,7 @@ impl PostDetails {
         post_relationships: &PostRelationships,
     ) -> Result<OperationOutcome, DynError> {
         match queries::put::create_post(self, post_relationships) {
-            Ok(query) => execute_graph_operation(query).await,
+            Ok(query) => execute_graph_put_operation(query).await,
             Err(e) => Err(format!("QUERY: Error while creating the query: {e}").into()),
         }
     }

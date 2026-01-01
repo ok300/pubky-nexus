@@ -88,7 +88,7 @@ async fn put_sync_post(
             }
             Err(EventProcessorError::MissingDependency { dependency }.into())
         }
-        OperationOutcome::CreatedOrDeleted => {
+        OperationOutcome::Created | OperationOutcome::Deleted => {
             // SAVE TO INDEXES
             let post_key_slice: &[&str] = &[&author_id, post_id];
             let tag_label_slice = &[tag_label.to_string()];
@@ -205,7 +205,7 @@ async fn put_sync_user(
             let dependency = vec![key];
             Err(EventProcessorError::MissingDependency { dependency }.into())
         }
-        OperationOutcome::CreatedOrDeleted => {
+        OperationOutcome::Created | OperationOutcome::Deleted => {
             let tag_label_slice = &[tag_label.to_string()];
 
             // SAVE TO INDEX

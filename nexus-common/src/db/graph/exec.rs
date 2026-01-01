@@ -8,30 +8,65 @@ use serde::de::DeserializeOwned;
 pub enum OperationOutcome {
     /// The query found and updated an existing node/relationship.
     Updated,
-    /// This variant represents a structural mutation where the node/relationship
-    /// did not exist before the operation (creation) or no longer exists after the operation (deletion)
-    CreatedOrDeleted,
+    /// The node/relationship was newly created by the operation.
+    Created,
+    /// The node/relationship was deleted by the operation.
+    Deleted,
     /// A required node/relationship was not found, indicating a missing dependency
     /// (often due to the node/relationship not yet being indexed or otherwise unavailable).
     MissingDependency,
+}
+
+/// Executes a graph PUT query (create/update) expected to return exactly one row containing a boolean column named
+/// "flag". Interprets the boolean as follows:
+///
+/// - `true` => Returns [`OperationOutcome::Updated`] (relationship/node already existed)
+/// - `false` => Returns [`OperationOutcome::Created`] (relationship/node was newly created)
+///
+/// If no rows are returned, this function returns [`OperationOutcome::MissingDependency`], typically
+/// indicating a missing dependency or an unmatched query condition.
+pub async fn execute_graph_put_operation(query: Query) -> Result<OperationOutcome, DynError> {
+    // The "flag" field indicates a specific condition in the query
+    let maybe_flag = fetch_key_from_graph(query, "flag").await?;
+    match maybe_flag {
+        Some(true) => Ok(OperationOutcome::Updated),
+        Some(false) => Ok(OperationOutcome::Created),
+        None => Ok(OperationOutcome::MissingDependency),
+    }
+}
+
+/// Executes a graph DELETE query expected to return exactly one row containing a boolean column named
+/// "flag". Interprets the boolean as follows:
+///
+/// - `true` => Returns [`OperationOutcome::Updated`] (relationship/node did not exist, no-op)
+/// - `false` => Returns [`OperationOutcome::Deleted`] (relationship/node was deleted)
+///
+/// If no rows are returned, this function returns [`OperationOutcome::MissingDependency`], typically
+/// indicating a missing dependency or an unmatched query condition.
+pub async fn execute_graph_delete_operation(query: Query) -> Result<OperationOutcome, DynError> {
+    // The "flag" field indicates a specific condition in the query
+    let maybe_flag = fetch_key_from_graph(query, "flag").await?;
+    match maybe_flag {
+        Some(true) => Ok(OperationOutcome::Updated),
+        Some(false) => Ok(OperationOutcome::Deleted),
+        None => Ok(OperationOutcome::MissingDependency),
+    }
 }
 
 /// Executes a graph query expected to return exactly one row containing a boolean column named
 /// "flag". Interprets the boolean as follows:
 ///
 /// - `true` => Returns [`OperationOutcome::Updated`]
-/// - `false` => Returns [`OperationOutcome::CreatedOrDeleted`]
+/// - `false` => Returns [`OperationOutcome::Created`] or [`OperationOutcome::Deleted`] depending on context
 ///
 /// If no rows are returned, this function returns [`OperationOutcome::MissingDependency`], typically
 /// indicating a missing dependency or an unmatched query condition.
+///
+/// **Deprecated**: Use [`execute_graph_put_operation`] or [`execute_graph_delete_operation`] instead
+/// for clearer semantics.
 pub async fn execute_graph_operation(query: Query) -> Result<OperationOutcome, DynError> {
-    // The "flag" field indicates a specific condition in the query
-    let maybe_flag = fetch_key_from_graph(query, "flag").await?;
-    match maybe_flag {
-        Some(true) => Ok(OperationOutcome::Updated),
-        Some(false) => Ok(OperationOutcome::CreatedOrDeleted),
-        None => Ok(OperationOutcome::MissingDependency),
-    }
+    // Default to PUT operation behavior for backward compatibility
+    execute_graph_put_operation(query).await
 }
 
 /// Exec a graph query without a return

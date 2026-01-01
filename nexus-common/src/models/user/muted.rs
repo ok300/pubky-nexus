@@ -1,5 +1,5 @@
 use crate::db::{
-    execute_graph_operation, fetch_row_from_graph, queries, OperationOutcome, RedisOps,
+    execute_graph_put_operation, execute_graph_delete_operation, fetch_row_from_graph, queries, OperationOutcome, RedisOps,
 };
 use crate::types::DynError;
 use async_trait::async_trait;
@@ -82,7 +82,7 @@ impl Muted {
     pub async fn put_to_graph(user_id: &str, muted_id: &str) -> Result<OperationOutcome, DynError> {
         let indexed_at = Utc::now().timestamp_millis();
         let query = queries::put::create_mute(user_id, muted_id, indexed_at);
-        execute_graph_operation(query).await
+        execute_graph_put_operation(query).await
     }
 
     pub async fn reindex(user_id: &str) -> Result<(), DynError> {
@@ -101,7 +101,7 @@ impl Muted {
         muted_id: &str,
     ) -> Result<OperationOutcome, DynError> {
         let query = queries::del::delete_mute(user_id, muted_id);
-        execute_graph_operation(query).await
+        execute_graph_delete_operation(query).await
     }
 
     pub async fn del_from_index(&self, user_id: &str) -> Result<(), DynError> {
