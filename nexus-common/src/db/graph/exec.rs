@@ -38,8 +38,8 @@ pub async fn execute_graph_put_operation(query: Query) -> Result<OperationOutcom
 /// Executes a graph DELETE query expected to return exactly one row containing a boolean column named
 /// "flag". Interprets the boolean as follows:
 ///
-/// - `true` => Returns [`OperationOutcome::Updated`] (relationship/node did not exist, no-op)
-/// - `false` => Returns [`OperationOutcome::Deleted`] (relationship/node was deleted)
+/// - `true` => Returns [`OperationOutcome::Updated`] (relationship/node did not exist, deletion was a no-op)
+/// - `false` => Returns [`OperationOutcome::Deleted`] (relationship/node existed and was deleted)
 ///
 /// If no rows are returned, this function returns [`OperationOutcome::MissingDependency`], typically
 /// indicating a missing dependency or an unmatched query condition.
@@ -57,13 +57,13 @@ pub async fn execute_graph_delete_operation(query: Query) -> Result<OperationOut
 /// "flag". Interprets the boolean as follows:
 ///
 /// - `true` => Returns [`OperationOutcome::Updated`]
-/// - `false` => Returns [`OperationOutcome::Created`] or [`OperationOutcome::Deleted`] depending on context
+/// - `false` => Returns [`OperationOutcome::Created`]
 ///
 /// If no rows are returned, this function returns [`OperationOutcome::MissingDependency`], typically
 /// indicating a missing dependency or an unmatched query condition.
 ///
 /// **Deprecated**: Use [`execute_graph_put_operation`] or [`execute_graph_delete_operation`] instead
-/// for clearer semantics.
+/// for clearer semantics. This function defaults to PUT operation behavior (returns `Created` when flag is false).
 pub async fn execute_graph_operation(query: Query) -> Result<OperationOutcome, DynError> {
     // Default to PUT operation behavior for backward compatibility
     execute_graph_put_operation(query).await
