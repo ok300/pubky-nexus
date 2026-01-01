@@ -190,6 +190,9 @@ impl NexusApi {
         let public_addr = ctx.api_config.public_addr;
         let listener = TcpListener::bind(public_addr)
             .inspect_err(|e| error!("Failed to bind to {public_addr:?}: {e}"))?;
+        listener
+            .set_nonblocking(true)
+            .inspect_err(|e| error!("Failed to set {public_addr:?} listener non-blocking: {e}"))?;
         let local_addr = listener
             .local_addr()
             .inspect_err(|e| error!("Failed to get local address after binding: {e})"))?;
@@ -216,6 +219,9 @@ impl NexusApi {
         let pubky_socket = ctx.api_config.pubky_listen_socket;
         let pubky_listener = TcpListener::bind(pubky_socket)
             .inspect_err(|e| error!("Failed to bind to Pubky socket {pubky_socket:?}: {e}"))?;
+        pubky_listener
+            .set_nonblocking(true)
+            .inspect_err(|e| error!("Failed to set Pubky listener {pubky_socket:?} non-blocking: {e}"))?;
         let pubky_local_addr = pubky_listener
             .local_addr()
             .inspect_err(|e| error!("Failed to get local address after binding: {e})"))?;
