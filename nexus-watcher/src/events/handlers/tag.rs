@@ -312,6 +312,13 @@ async fn del_sync_user(
                 .del_from_index(tagged_id, None, tag_label)
                 .await?;
             Ok::<(), DynError>(())
+        },
+        async {
+            // Check if the tag still exists in the graph, and if not, remove it from TagSearch
+            if !TagSearch::label_exists_in_graph(tag_label).await? {
+                TagSearch::del_from_index(&[tag_label]).await?;
+            }
+            Ok::<(), DynError>(())
         }
     );
 
@@ -319,7 +326,8 @@ async fn del_sync_user(
         indexing_results.0,
         indexing_results.1,
         indexing_results.2,
-        indexing_results.3
+        indexing_results.3,
+        indexing_results.4
     );
 
     Ok(())
@@ -385,6 +393,13 @@ async fn del_sync_post(
             // Delete post from global label timeline
             PostsByTagSearch::del_from_index(author_id, post_id, tag_label).await?;
             Ok::<(), DynError>(())
+        },
+        async {
+            // Check if the tag still exists in the graph, and if not, remove it from TagSearch
+            if !TagSearch::label_exists_in_graph(tag_label).await? {
+                TagSearch::del_from_index(&[tag_label]).await?;
+            }
+            Ok::<(), DynError>(())
         }
     );
 
@@ -394,7 +409,8 @@ async fn del_sync_post(
         indexing_results.2,
         indexing_results.3,
         indexing_results.4,
-        indexing_results.5
+        indexing_results.5,
+        indexing_results.6
     );
 
     Ok(())

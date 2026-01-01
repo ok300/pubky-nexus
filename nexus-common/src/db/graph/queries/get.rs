@@ -424,6 +424,17 @@ pub fn get_tags() -> Query {
     )
 }
 
+/// Checks if a tag label exists in the graph (has any TAGGED relationships)
+pub fn tag_label_exists(label: &str) -> Query {
+    query(
+        "
+        MATCH ()-[t:TAGGED {label: $label}]->()
+        RETURN COUNT(t) > 0 AS exists
+        ",
+    )
+    .param("label", label)
+}
+
 pub fn get_tag_taggers_by_reach(
     label: &str,
     user_id: &str,

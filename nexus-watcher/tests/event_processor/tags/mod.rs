@@ -6,6 +6,7 @@ mod post_notification;
 mod post_put;
 mod retry_post_tag;
 mod retry_user_tag;
+mod search_cleanup;
 mod user_notification;
 mod user_to_self_put;
 mod user_to_user_del;

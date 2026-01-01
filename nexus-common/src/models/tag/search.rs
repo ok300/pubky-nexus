@@ -1,5 +1,5 @@
-use crate::db::queries::get::get_tags;
-use crate::db::{fetch_key_from_graph, RedisOps};
+use crate::db::queries::get::{get_tags, tag_label_exists};
+use crate::db::{fetch_key_from_graph, fetch_row_from_graph, RedisOps};
 use crate::models::create_zero_score_tuples;
 use crate::types::DynError;
 use crate::types::Pagination;
@@ -49,5 +49,25 @@ impl TagSearch {
     pub async fn put_to_index(tag_labels: &[String]) -> Result<(), DynError> {
         let elements: Vec<(f64, &str)> = create_zero_score_tuples(tag_labels);
         Self::put_index_sorted_set(&TAGS_LABEL, &elements, None, None).await
+    }
+
+    pub async fn del_from_index(tag_labels: &[&str]) -> Result<(), DynError> {
+        if tag_labels.is_empty() {
+            return Ok(());
+        }
+        Self::remove_from_index_sorted_set(None, &TAGS_LABEL, tag_labels).await
+    }
+
+    /// Checks if a tag label still exists in the graph (has any TAGGED relationships)
+    pub async fn label_exists_in_graph(label: &str) -> Result<bool, DynError> {
+        let query = tag_label_exists(label);
+        let maybe_row = fetch_row_from_graph(query).await?;
+        
+        if let Some(row) = maybe_row {
+            let exists: bool = row.get("exists").unwrap_or(false);
+            Ok(exists)
+        } else {
+            Ok(false)
+        }
     }
 }
