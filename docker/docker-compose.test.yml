@@ -1,0 +1,85 @@
+# Docker Compose configuration optimized for testing with in-memory databases
+# This configuration uses tmpfs (in-memory filesystem) for all database storage,
+# making tests faster and avoiding disk I/O.
+#
+# This is a standalone configuration file that completely replaces docker-compose.yml for testing.
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml --env-file .env-sample up -d
+#
+# Clean up:
+#   docker compose -f docker-compose.test.yml down --volumes
+
+services:
+  neo4j:
+    image: neo4j:5.26.7-community
+    container_name: neo4j
+    restart: "no"
+    ports:
+      - 7474:7474
+      - 7687:7687
+    volumes:
+      # Keep only the test-graph mount needed for loading mock data
+      - ./test-graph:/test-graph
+    # Use tmpfs for Neo4j data and logs to avoid disk persistence
+    tmpfs:
+      - /data
+      - /logs
+    environment:
+      NEO4J_initial_dbms_default__database: ${NEO4J_DB_NAME}
+      NEO4J_AUTH: ${NEO4J_DB_USERNAME}/${NEO4J_PASSWORD}
+      # Optimize Neo4j for in-memory operation
+      # Reduce memory footprint for faster startup in test environments
+      NEO4J_server_memory_pagecache_size: 512M
+      NEO4J_server_memory_heap_initial__size: 512M
+      NEO4J_server_memory_heap_max__size: 512M
+
+  redis:
+    image: redis/redis-stack:7.2.0-v11
+    container_name: redis
+    ports:
+      - "6379:6379"
+      - "8001:8001"
+    networks:
+      - default
+    # Use tmpfs for Redis data to avoid disk persistence
+    tmpfs:
+      - /data
+    restart: "no"
+    # Configure Redis for in-memory only operation (disable persistence)
+    command: >
+      redis-stack-server
+      --save ""
+      --appendonly no
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # Use tmpfs for Postgres data to avoid disk persistence
+    tmpfs:
+      - /var/lib/postgresql/data
+    restart: "no"
+    # ⚠️ WARNING: These Postgres settings disable durability features and are UNSAFE for production!
+    # They are optimized for test environments only to improve performance by:
+    # - Disabling fsync (no wait for disk writes)
+    # - Disabling synchronous commits
+    # - Disabling full page writes
+    # - Setting minimal WAL level (no replication)
+    # These settings significantly speed up tests but WILL cause data loss if the system crashes.
+    command: >
+      postgres
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
+      -c wal_level=minimal
+      -c max_wal_senders=0
