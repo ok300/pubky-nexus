@@ -169,7 +169,7 @@ For faster test execution without disk persistence, use the in-memory database c
 
 ```bash
 cd docker
-docker compose -f docker-compose.yml -f docker-compose.test.yml --env-file .env-sample up -d
+docker compose -f docker-compose.test.yml --env-file .env-sample up -d
 ```
 
 2. Load the mock data:
@@ -185,6 +185,13 @@ cargo nextest run -p nexus-common --no-fail-fast
 cargo nextest run -p nexus-watcher --no-fail-fast
 export TEST_PUBKY_CONNECTION_STRING=postgres://test_user:test_pass@localhost:5432/postgres?pubky-test=true
 cargo nextest run -p nexus-webapi --no-fail-fast
+```
+
+4. Clean up when done:
+
+```bash
+cd docker
+docker compose -f docker-compose.test.yml down --volumes
 ```
 
 The in-memory configuration (`docker-compose.test.yml`):

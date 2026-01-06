@@ -2,14 +2,13 @@
 # This configuration uses tmpfs (in-memory filesystem) for all database storage,
 # making tests faster and avoiding disk I/O.
 #
-# This is a complete standalone configuration file that can be used independently
-# or as an override. When used as an override with -f docker-compose.yml -f docker-compose.test.yml,
-# it will replace volume mounts with tmpfs.
+# This is a standalone configuration file that completely replaces docker-compose.yml for testing.
 #
-# Usage as standalone:
+# Usage:
 #   docker compose -f docker-compose.test.yml --env-file .env-sample up -d
-# Usage as override:
-#   docker compose -f docker-compose.yml -f docker-compose.test.yml --env-file .env-sample up -d
+#
+# Clean up:
+#   docker compose -f docker-compose.test.yml down --volumes
 
 services:
   neo4j:

@@ -53,7 +53,7 @@ jobs:
 
       - name: Set up Docker Compose with in-memory databases
         working-directory: docker
-        run: docker compose -f docker-compose.yml -f docker-compose.test.yml --env-file .env-sample up -d
+        run: docker compose -f docker-compose.test.yml --env-file .env-sample up -d
 
       - name: Wait for services to be ready
         run: |
@@ -84,4 +84,4 @@ jobs:
       - name: Tear down Docker Compose
         if: always()
         working-directory: docker
-        run: docker compose -f docker-compose.yml -f docker-compose.test.yml down --volumes
+        run: docker compose -f docker-compose.test.yml down --volumes
