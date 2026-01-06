@@ -3699,7 +3699,7 @@ dependencies = [
  "base64",
  "bytes",
  "cookie",
- "cookie_store",
+ "cookie_store 0.21.1",
  "flume",
  "futures-lite",
  "futures-util",
