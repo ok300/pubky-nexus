@@ -25,7 +25,6 @@ services:
     tmpfs:
       - /data
       - /logs
-      - /conf
     environment:
       NEO4J_initial_dbms_default__database: ${NEO4J_DB_NAME}
       NEO4J_AUTH: ${NEO4J_DB_USERNAME}/${NEO4J_PASSWORD}
@@ -70,8 +69,13 @@ services:
     tmpfs:
       - /var/lib/postgresql/data
     restart: "no"
-    # Optimize Postgres for in-memory operation and faster startup
-    # These settings disable fsync and other durability features (safe for tests only)
+    # ⚠️ WARNING: These Postgres settings disable durability features and are UNSAFE for production!
+    # They are optimized for test environments only to improve performance by:
+    # - Disabling fsync (no wait for disk writes)
+    # - Disabling synchronous commits
+    # - Disabling full page writes
+    # - Setting minimal WAL level (no replication)
+    # These settings significantly speed up tests but WILL cause data loss if the system crashes.
     command: >
       postgres
       -c fsync=off
