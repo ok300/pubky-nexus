@@ -133,24 +133,68 @@ The manager will automatically handle migrations in the appropriate order, progr
 
 ## 🧪 Running Tests
 
-Running tests requires setting up mock data (`docker/test-graph/mocks`) into Neo4j and Redis
+### Standard Setup (Persistent Databases)
 
-Use the `db` command to load the mock data
+Running tests requires setting up the databases with mock data (`docker/test-graph/mocks`) into Neo4j and Redis.
+
+1. Start the databases using Docker Compose:
+
+```bash
+cd docker
+docker compose --env-file .env-sample up -d
+```
+
+2. Load the mock data:
 
 ```bash
 cargo run -p nexusd -- db mock
 ```
 
-Then to run the tests:
+3. Run the tests:
 
 ```bash
 cargo nextest run -p nexus-common --no-fail-fast
 cargo nextest run -p nexus-watcher --no-fail-fast
 
 # webapi tests need the Postgres Connection URL as env variable, adjust it as needed
-export TEST_PUBKY_CONNECTION_STRING=postgres://postgres:postgres@localhost:5432/postgres?pubky-test=true
+export TEST_PUBKY_CONNECTION_STRING=postgres://test_user:test_pass@localhost:5432/postgres?pubky-test=true
 cargo nextest run -p nexus-webapi --no-fail-fast
 ```
+
+### In-Memory Database Setup (Recommended for Testing)
+
+For faster test execution without disk persistence, use the in-memory database configuration:
+
+1. Start databases with in-memory storage (using tmpfs):
+
+```bash
+cd docker
+docker compose -f docker-compose.yml -f docker-compose.test.yml --env-file .env-sample up -d
+```
+
+2. Load the mock data:
+
+```bash
+cargo run -p nexusd -- db mock
+```
+
+3. Run the tests (same as standard setup):
+
+```bash
+cargo nextest run -p nexus-common --no-fail-fast
+cargo nextest run -p nexus-watcher --no-fail-fast
+export TEST_PUBKY_CONNECTION_STRING=postgres://test_user:test_pass@localhost:5432/postgres?pubky-test=true
+cargo nextest run -p nexus-webapi --no-fail-fast
+```
+
+The in-memory configuration (`docker-compose.test.yml`):
+- Uses tmpfs for all database storage (Redis, Neo4j, Postgres)
+- Disables Redis persistence (RDB and AOF)
+- Configures Postgres with optimizations for test environments
+- Provides faster startup and teardown times
+- Automatically used by CI/CD pipelines
+
+### Testing Specific Features
 
 To test specific feature(s):
 
