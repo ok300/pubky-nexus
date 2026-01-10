@@ -531,6 +531,7 @@ impl PostStream {
         limit: Option<usize>,
     ) -> Vec<(String, f64)> {
         // Sort all the collected posts globally by their score (descending)
+        // Keep treating NaN scores as equal to match the previous behavior and avoid panics
         post_keys.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
         // Apply global skip and limit after sorting
