@@ -13,8 +13,12 @@ async fn test_shutdown_signal() -> Result<()> {
     let mut event_processor_list = setup().await?;
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-    // Create 3 random homeservers with timeout limit
-    for index in 0..3 {
+    // Create 4 random homeservers with different execution durations
+    // Index 0: default (0s) - processed via run_default, not run_all
+    // Index 1: 2s
+    // Index 2: 4s
+    // Index 3: 6s
+    for index in 0..4 {
         let processor_status = MockEventProcessorResult::Success;
         create_random_homeservers_and_persist(
             &mut event_processor_list,
@@ -26,23 +30,26 @@ async fn test_shutdown_signal() -> Result<()> {
         .await;
     }
 
-    let runner = MockEventProcessorRunner::new(event_processor_list, 3, shutdown_rx);
+    let runner = MockEventProcessorRunner::new(event_processor_list, 4, shutdown_rx);
 
-    // Schedule Ctrl-C simulation after 1s
+    // Schedule Ctrl-C simulation after 3s
     tokio::spawn({
         let shutdown_tx = shutdown_tx.clone();
         async move {
-            sleep(Duration::from_secs(1)).await;
+            sleep(Duration::from_secs(3)).await;
             let _ = shutdown_tx.send(true);
         }
     });
 
     let stats = runner.run_all().await.unwrap().0;
 
-    // We created 3 HSs, each with different execution durations (0s, 2s, 4s)
-    // We triggered the shutdown signal 1s after start
-    assert_eq!(stats.count_ok(), 2); // 2 processors run without errors (of the 3, the 3rd one didn't even start)
-    assert_eq!(stats.count_error(), 0); // no processors fail, because no erratic or unexpected behavior was triggered
+    // run_all excludes the default (index 0), so it processes indices 1, 2, 3:
+    // - index 1 (2s): completes before shutdown (3s)
+    // - index 2 (4s): starts, but shutdown signal sent while running, exits gracefully
+    // - index 3 (6s): may not even start if shutdown detected in run_all loop
+    // Expected: 2 successful (index 1 + index 2 which exits early on shutdown)
+    assert_eq!(stats.count_ok(), 2); // 2 processors run without errors
+    assert_eq!(stats.count_error(), 0); // no processors fail
     assert_eq!(stats.count_panic(), 0);
     assert_eq!(stats.count_timeout(), 0);
 
