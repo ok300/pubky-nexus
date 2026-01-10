@@ -47,9 +47,7 @@ jobs:
           tool: cargo-nextest
 
       - name: Install ImageMagick
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq imagemagick
+        run: sudo apt-get install -y -qq imagemagick
 
       - name: Set up Docker Compose
         working-directory: docker
