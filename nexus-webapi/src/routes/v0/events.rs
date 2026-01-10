@@ -1,7 +1,7 @@
 use crate::routes::AppState;
 use nexus_common::models::event::Event;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 use super::endpoints::EVENTS_ROUTE;
 
@@ -27,9 +27,14 @@ impl std::fmt::Display for EventsList {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct EventsQuery {
+    /// Cursor
     cursor: Option<usize>,
+
+    /// Limit the number of results (default 500, maximum 1000)
+    #[param(default = 500, maximum = 1000)]
     limit: Option<usize>,
 }
 
@@ -38,8 +43,7 @@ pub struct EventsQuery {
     path = EVENTS_ROUTE,
     tag = "Events",
     params(
-        ("cursor" = u64, Query, description = "Cursor"),
-        ("limit" = usize, Query, description = "Limit the number of results, (default 500, maximum 1000)")
+        EventsQuery
     ),
     responses(
         (
@@ -82,5 +86,5 @@ pub fn routes() -> Router<AppState> {
 }
 
 #[derive(OpenApi)]
-#[openapi(paths(get_events_handler), components(schemas(EventsList)))]
+#[openapi(paths(get_events_handler), components(schemas(EventsList, EventsQuery)))]
 pub struct EventsApiDoc;

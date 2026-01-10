@@ -3,17 +3,28 @@ use crate::{Error, Result};
 use axum::extract::{Path, Query};
 use axum::Json;
 use nexus_common::models::post::search::PostsByTagSearch;
-use nexus_common::types::Pagination;
 use nexus_common::types::StreamSorting;
 use serde::Deserialize;
 use tracing::debug;
-use utoipa::OpenApi;
+use utoipa::{IntoParams, OpenApi, ToSchema};
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct SearchPostsQuery {
+    /// StreamSorting method
     pub sorting: Option<StreamSorting>,
-    #[serde(flatten)]
-    pub pagination: Pagination,
+
+    /// The start of the stream timeframe. Posts with a timestamp greater than this value will be excluded from the results
+    pub start: Option<f64>,
+
+    /// The end of the stream timeframe. Posts with a timestamp less than this value will be excluded from the results
+    pub end: Option<f64>,
+
+    /// Skip N results
+    pub skip: Option<usize>,
+
+    /// Limit the number of results
+    pub limit: Option<usize>,
 }
 
 #[utoipa::path(
@@ -23,11 +34,7 @@ pub struct SearchPostsQuery {
     tag = "Search",
     params(
         ("tag" = String, Path, description = "Tag name"),
-        ("sorting" = Option<StreamSorting>, Query, description = "StreamSorting method"),
-        ("start" = Option<usize>, Query, description = "The start of the stream timeframe. Posts with a timestamp greater than this value will be excluded from the results"),
-        ("end" = Option<usize>, Query, description = "The end of the stream timeframe. Posts with a timestamp less than this value will be excluded from the results"),
-        ("skip" = Option<usize>, Query, description = "Skip N results"),
-        ("limit" = Option<usize>, Query, description = "Limit the number of results")
+        SearchPostsQuery
     ),
     responses(
         (status = 200, description = "Search results", body = Vec<PostsByTagSearch>),
@@ -38,22 +45,22 @@ pub async fn search_posts_by_tag_handler(
     Path(tag): Path<String>,
     Query(query): Query<SearchPostsQuery>,
 ) -> Result<Json<Vec<PostsByTagSearch>>> {
-    // Extract sorting and pagination fields from the query
-    let sorting = query.sorting;
-    let mut pagination = query.pagination;
-
     debug!(
         "GET {SEARCH_POSTS_BY_TAG_ROUTE} tag:{}, sort_by: {:?}, start: {:?}, end: {:?}, skip: {:?}, limit: {:?}",
-        tag, sorting, pagination.start, pagination.end, pagination.skip, pagination.limit
+        tag, query.sorting, query.start, query.end, query.skip, query.limit
     );
 
-    let skip = pagination.skip.unwrap_or(0);
-    let limit = pagination.limit.unwrap_or(20);
+    let skip = query.skip.unwrap_or(0);
+    let limit = query.limit.unwrap_or(20);
 
-    pagination.skip = Some(skip);
-    pagination.limit = Some(limit);
+    let pagination = nexus_common::types::Pagination {
+        skip: Some(skip),
+        limit: Some(limit),
+        start: query.start,
+        end: query.end,
+    };
 
-    match PostsByTagSearch::get_by_label(&tag, sorting, pagination).await {
+    match PostsByTagSearch::get_by_label(&tag, query.sorting, pagination).await {
         Ok(Some(posts_list)) => Ok(Json(posts_list)),
         Ok(None) => Ok(Json(vec![])),
         Err(source) => Err(Error::InternalServerError { source }),
@@ -63,6 +70,6 @@ pub async fn search_posts_by_tag_handler(
 #[derive(OpenApi)]
 #[openapi(
     paths(search_posts_by_tag_handler),
-    components(schemas(PostsByTagSearch))
+    components(schemas(PostsByTagSearch, SearchPostsQuery))
 )]
 pub struct SearchPostsByTagApiDocs;
