@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Fast checks that don't require dependencies
+  check:
+    name: Format & Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: check-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "ci"
+          cache-on-failure: true
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+  # Run tests in parallel using matrix strategy
+  test:
+    name: Test ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: check  # Only run tests if format/lint pass
+    concurrency:
+      group: test-${{ matrix.package }}-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [nexus-common, nexus-webapi, nexus-watcher]
+    services:
+      neo4j:
+        image: neo4j:5.26.7-community
+        ports:
+          - 7474:7474
+          - 7687:7687
+        env:
+          NEO4J_initial_dbms_default__database: neo4j
+          NEO4J_AUTH: neo4j/12345678
+          NEO4J_server_memory_pagecache_size: 512M
+          NEO4J_server_memory_heap_initial__size: 512M
+          NEO4J_server_memory_heap_max__size: 1G
+        options: >-
+          --health-cmd "wget -q --spider http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis/redis-stack:7.2.0-v11
+        ports:
+          - 6379:6379
+          - 8001:8001
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      postgres:
+        image: postgres:17-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd "pg_isready -U test_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_PUBKY_CONNECTION_STRING: postgres://test_user:test_pass@localhost:5432/postgres?pubky-test=true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "ci"
+          cache-on-failure: true
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Install ImageMagick
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+
+      - name: Load Mock Data
+        run: cargo run -p nexusd -- db mock
+
+      - name: Run tests for ${{ matrix.package }}
+        run: cargo nextest run -p ${{ matrix.package }} --no-fail-fast
