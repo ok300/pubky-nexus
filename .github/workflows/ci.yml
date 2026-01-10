@@ -15,6 +15,10 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+# Restrict permissions for security
+permissions:
+  contents: read
+
 jobs:
   # Fast checks that don't require dependencies
   check:
