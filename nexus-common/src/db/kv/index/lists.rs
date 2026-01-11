@@ -84,3 +84,121 @@ pub async fn get_range(
         _ => Ok(Some(result)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::StackConfig;
+    use crate::StackManager;
+
+    #[tokio_shared_rt::test(shared)]
+    async fn test_put_prevents_duplicates() -> Result<(), DynError> {
+        StackManager::setup("unit-lists-test", &StackConfig::default()).await?;
+
+        let prefix = "test_lists";
+        let key = "duplicate_test";
+        let test_values = &["value1", "value2", "value3"];
+
+        // Clean up any existing test data
+        let mut redis_conn = get_redis_conn().await?;
+        let index_key = format!("{prefix}:{key}");
+        let _: () = redis_conn.del(&index_key).await?;
+
+        // First insertion: add the values
+        put(prefix, key, test_values).await?;
+
+        // Verify values were added
+        let result = get_range(prefix, key, None, None).await?;
+        assert!(result.is_some());
+        let values = result.unwrap();
+        assert_eq!(values.len(), 3);
+        assert_eq!(values, vec!["value1", "value2", "value3"]);
+
+        // Second insertion: try to add the same values again
+        put(prefix, key, test_values).await?;
+
+        // Verify no duplicates were created
+        let result = get_range(prefix, key, None, None).await?;
+        assert!(result.is_some());
+        let values = result.unwrap();
+        assert_eq!(values.len(), 3, "Duplicates were not prevented!");
+        assert_eq!(values, vec!["value1", "value2", "value3"]);
+
+        // Third insertion: add mix of existing and new values
+        let mixed_values = &["value2", "value4", "value1", "value5"];
+        put(prefix, key, mixed_values).await?;
+
+        // Verify only new values were added
+        let result = get_range(prefix, key, None, None).await?;
+        assert!(result.is_some());
+        let values = result.unwrap();
+        assert_eq!(values.len(), 5, "Mixed insertion failed!");
+        assert_eq!(
+            values,
+            vec!["value1", "value2", "value3", "value4", "value5"]
+        );
+
+        // Clean up
+        let _: () = redis_conn.del(&index_key).await?;
+
+        Ok(())
+    }
+
+    #[tokio_shared_rt::test(shared)]
+    async fn test_put_empty_values() -> Result<(), DynError> {
+        StackManager::setup("unit-lists-test", &StackConfig::default()).await?;
+
+        let prefix = "test_lists";
+        let key = "empty_test";
+        let empty_values: &[&str] = &[];
+
+        // Should not error on empty values
+        put(prefix, key, empty_values).await?;
+
+        // Verify nothing was added
+        let result = get_range(prefix, key, None, None).await?;
+        assert!(result.is_none());
+
+        Ok(())
+    }
+
+    #[tokio_shared_rt::test(shared)]
+    async fn test_get_range_with_skip_and_limit() -> Result<(), DynError> {
+        StackManager::setup("unit-lists-test", &StackConfig::default()).await?;
+
+        let prefix = "test_lists";
+        let key = "range_test";
+        let test_values = &["a", "b", "c", "d", "e", "f"];
+
+        // Clean up any existing test data
+        let mut redis_conn = get_redis_conn().await?;
+        let index_key = format!("{prefix}:{key}");
+        let _: () = redis_conn.del(&index_key).await?;
+
+        // Add values
+        put(prefix, key, test_values).await?;
+
+        // Test skip
+        let result = get_range(prefix, key, Some(2), None).await?;
+        assert!(result.is_some());
+        let values = result.unwrap();
+        assert_eq!(values, vec!["c", "d", "e", "f"]);
+
+        // Test limit
+        let result = get_range(prefix, key, None, Some(3)).await?;
+        assert!(result.is_some());
+        let values = result.unwrap();
+        assert_eq!(values, vec!["a", "b", "c"]);
+
+        // Test skip + limit
+        let result = get_range(prefix, key, Some(1), Some(3)).await?;
+        assert!(result.is_some());
+        let values = result.unwrap();
+        assert_eq!(values, vec!["b", "c", "d"]);
+
+        // Clean up
+        let _: () = redis_conn.del(&index_key).await?;
+
+        Ok(())
+    }
+}
