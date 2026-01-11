@@ -243,6 +243,74 @@ pub async fn stream_users_by_ids_handler(
     }
 }
 
+/// Converts UserStreamSource to its lowercase string representation for error messages
+fn source_to_string(source: &UserStreamSource) -> &'static str {
+    match source {
+        UserStreamSource::Followers => "followers",
+        UserStreamSource::Following => "following",
+        UserStreamSource::Friends => "friends",
+        UserStreamSource::Muted => "muted",
+        UserStreamSource::MostFollowed => "most_followed",
+        UserStreamSource::Influencers => "influencers",
+        UserStreamSource::Recommended => "recommended",
+        UserStreamSource::PostReplies => "post_replies",
+    }
+}
+
+/// Validates that user_id is provided when required by the source
+fn validate_user_id_required(user_id: &Option<String>, source: &UserStreamSource) -> Result<()> {
+    const SOURCES_REQUIRING_USER_ID: &[UserStreamSource] = &[
+        UserStreamSource::Followers,
+        UserStreamSource::Following,
+        UserStreamSource::Friends,
+        UserStreamSource::Muted,
+        UserStreamSource::Recommended,
+    ];
+
+    if user_id.is_none() && SOURCES_REQUIRING_USER_ID.contains(source) {
+        return Err(Error::InvalidInput {
+            message: format!(
+                "user_id query param must be provided for source '{}'",
+                source_to_string(source)
+            ),
+        });
+    }
+
+    Ok(())
+}
+
+/// Validates parameters specific to the Influencers source
+fn validate_influencers_params(
+    user_id: &Option<String>,
+    reach: &Option<StreamReach>,
+) -> Result<()> {
+    if user_id.is_none() && reach.is_some() {
+        return Err(Error::InvalidInput {
+            message: "reach query param must be provided for source 'influencers' with a user_id"
+                .to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Validates parameters specific to the PostReplies source
+fn validate_post_replies_params(
+    author_id: &Option<String>,
+    post_id: &Option<String>,
+) -> Result<()> {
+    if author_id.is_none() {
+        return Err(Error::InvalidInput {
+            message: "author_id query param must be provided for source 'post_replies'".to_string(),
+        });
+    }
+    if post_id.is_none() {
+        return Err(Error::InvalidInput {
+            message: "post_id query param must be provided for source 'post_replies'".to_string(),
+        });
+    }
+    Ok(())
+}
+
 fn build_user_stream_input(
     query: UserStreamQuery,
 ) -> Result<(UserStreamInput, Option<String>, Option<u8>)> {
@@ -265,62 +333,13 @@ fn build_user_stream_input(
     let limit = limit.unwrap_or(5).min(20);
     let timeframe = timeframe.unwrap_or(Timeframe::AllTime);
 
-    if user_id.is_none() {
-        match source {
-            UserStreamSource::Followers => {
-                return Err(Error::InvalidInput {
-                    message: "user_id query param must be provided for source 'followers'"
-                        .to_string(),
-                })
-            }
-            UserStreamSource::Following => {
-                return Err(Error::InvalidInput {
-                    message: "user_id query param must be provided for source 'following'"
-                        .to_string(),
-                })
-            }
-            UserStreamSource::Friends => {
-                return Err(Error::InvalidInput {
-                    message: "user_id query param must be provided for source 'friends'"
-                        .to_string(),
-                })
-            }
-            UserStreamSource::Muted => {
-                return Err(Error::InvalidInput {
-                    message: "user_id query param must be provided for source 'muted'".to_string(),
-                })
-            }
-            UserStreamSource::Recommended => {
-                return Err(Error::InvalidInput {
-                    message: "user_id query param must be provided for source 'recommended'"
-                        .to_string(),
-                })
-            }
-            UserStreamSource::Influencers => {
-                if reach.is_some() {
-                    return Err(Error::InvalidInput {
-                        message:
-                            "reach query param must be provided for source 'influencers' with a user_id"
-                                .to_string(),
-                    });
-                }
-            }
-            UserStreamSource::PostReplies => {
-                if author_id.is_none() {
-                    return Err(Error::InvalidInput {
-                        message: "author_id query param must be provided for source 'post_replies'"
-                            .to_string(),
-                    });
-                }
-                if post_id.is_none() {
-                    return Err(Error::InvalidInput {
-                        message: "post_id query param must be provided for source 'post_replies'"
-                            .to_string(),
-                    });
-                }
-            }
-            _ => (),
-        }
+    // Validate parameters based on source type
+    validate_user_id_required(&user_id, &source)?;
+
+    match source {
+        UserStreamSource::Influencers => validate_influencers_params(&user_id, &reach)?,
+        UserStreamSource::PostReplies => validate_post_replies_params(&author_id, &post_id)?,
+        _ => (),
     }
 
     let input = UserStreamInput {
