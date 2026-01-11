@@ -1,52 +1,18 @@
+use crate::db::graph::queries;
 use crate::db::RedisOps;
 use crate::types::DynError;
+use async_trait::async_trait;
+use neo4rs::Query;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::followers::Followers;
 use super::following::Following;
 use super::traits::UserFollows;
 
-#[derive(Serialize, Deserialize, ToSchema, Default)]
+#[derive(Serialize, Deserialize, ToSchema, Default, Debug)]
 pub struct Friends(pub Vec<String>);
 
 impl Friends {
-    pub async fn get_by_id(
-        user_id: &str,
-        skip: Option<usize>,
-        limit: Option<usize>,
-    ) -> Result<Option<Self>, DynError> {
-        // Fetch following and followers, limit to 10K
-        let following = Following::get_by_id(user_id, None, Some(10000))
-            .await?
-            .unwrap_or_default()
-            .0;
-
-        let followers = Followers::get_by_id(user_id, None, Some(10000))
-            .await?
-            .unwrap_or_default()
-            .0;
-
-        // Find intersection of following and followers (mutual friends)
-        let mut friends: Vec<String> = following
-            .into_iter()
-            .filter(|user_id| followers.contains(user_id))
-            .collect();
-
-        if friends.is_empty() {
-            return Ok(None);
-        }
-
-        if let Some(skip) = skip {
-            friends = friends.into_iter().skip(skip).collect();
-        }
-        if let Some(limit) = limit {
-            friends.truncate(limit);
-        }
-
-        Ok(Some(Self(friends)))
-    }
-
     // Checks wjether user_a and user_b are friends
     pub async fn check(user_a_id: &str, user_b_id: &str) -> Result<bool, DynError> {
         let user_a_key_parts = &[user_a_id][..];
@@ -58,5 +24,28 @@ impl Friends {
         )?;
 
         Ok(a_follows_b && b_follows_a)
+    }
+}
+
+impl AsRef<[String]> for Friends {
+    fn as_ref(&self) -> &[String] {
+        &self.0
+    }
+}
+
+#[async_trait]
+impl RedisOps for Friends {}
+
+impl UserFollows for Friends {
+    fn from_vec(vec: Vec<String>) -> Self {
+        Self(vec)
+    }
+
+    fn get_query(user_id: &str, skip: Option<usize>, limit: Option<usize>) -> Query {
+        queries::get::get_user_friends(user_id, skip, limit)
+    }
+
+    fn get_ids_field_name() -> &'static str {
+        "friend_ids"
     }
 }
