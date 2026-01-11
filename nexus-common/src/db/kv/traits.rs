@@ -244,15 +244,14 @@ pub trait RedisOps: Serialize + DeserializeOwned + Send + Sync {
         let prefix = Self::prefix().await;
         let key = key_parts.join(":");
 
-        // TODO: Unsafe. If re-indexed it will duplicate follower/following list entries.
-        // Need reading, matching out the duplicates then storing. Inneficient.
-        // Needs mode safety for double-write.
+        // Note: The underlying lists::put function now checks for duplicates before adding,
+        // preventing duplicate entries during re-indexing or retries.
 
         // Directly use the string representations of items without additional serialization
         let collection = self.as_ref();
         let values: Vec<&str> = collection.iter().map(|item| item.as_ref()).collect();
 
-        // Store the values in the Redis list
+        // Store the values in the Redis list (duplicates are automatically handled)
         lists::put(&prefix, &key, &values).await
     }
 

@@ -1,10 +1,11 @@
 use crate::db::get_redis_conn;
 use crate::types::DynError;
-use deadpool_redis::redis::AsyncCommands;
+use deadpool_redis::redis::{AsyncCommands, Script};
 
-/// Adds elements to a Redis list.
+/// Adds elements to a Redis list, avoiding duplicates.
 ///
-/// This function appends elements to the specified Redis list. If the list doesn't exist,
+/// This function appends elements to the specified Redis list only if they don't already exist.
+/// This prevents duplicate entries when re-indexing or retrying operations. If the list doesn't exist,
 /// it creates a new list.
 ///
 /// # Arguments
@@ -22,7 +23,25 @@ pub async fn put(prefix: &str, key: &str, values: &[&str]) -> Result<(), DynErro
     }
     let index_key = format!("{prefix}:{key}");
     let mut redis_conn = get_redis_conn().await?;
-    let _: () = redis_conn.rpush(index_key, values).await?;
+
+    // Use a Lua script to atomically check for duplicates and add only new values
+    // This prevents duplicate entries during re-indexing or retries
+    let script = Script::new(
+        r"
+        local key = KEYS[1]
+        local added = 0
+        for i, value in ipairs(ARGV) do
+            local exists = redis.call('LPOS', key, value)
+            if not exists then
+                redis.call('RPUSH', key, value)
+                added = added + 1
+            end
+        end
+        return added
+        "
+    );
+
+    let _: i32 = script.key(&index_key).arg(values).invoke_async(&mut *redis_conn).await?;
     Ok(())
 }
 
