@@ -415,6 +415,51 @@ pub async fn _get_bool(prefix: &str, key: &str) -> Result<Option<bool>, DynError
     Ok(None)
 }
 
+/// Sets a JSON value in Redis only if the key does not already exist (atomic NX operation).
+///
+/// This function uses the RedisJSON `JSON.SET` command with the `NX` flag to atomically
+/// set a value only if the key doesn't exist, avoiding TOCTOU race conditions.
+///
+/// # Arguments
+///
+/// * `prefix` - A string slice representing the prefix for the Redis key.
+/// * `key` - A string slice representing the key under which the value is stored.
+/// * `value` - A reference to the value to be stored, which must implement `Serialize`.
+///
+/// # Returns
+///
+/// Returns `Ok(true)` if the value was set (key didn't exist), `Ok(false)` if the key already existed.
+///
+/// # Errors
+///
+/// Returns an error if the operation fails.
+pub async fn put_nx<T: Serialize + Send + Sync>(
+    prefix: &str,
+    key: &str,
+    value: &T,
+) -> Result<bool, DynError> {
+    let mut redis_conn = get_redis_conn().await?;
+    let index_key = format!("{prefix}:{key}");
+
+    // Use JSON.SET with NX flag - only sets if key doesn't exist
+    // Returns OK if set, nil if key already exists
+    let result: Option<String> = deadpool_redis::redis::cmd("JSON.SET")
+        .arg(&index_key)
+        .arg("$")
+        .arg(serde_json::to_string(value)?)
+        .arg("NX")
+        .query_async(&mut redis_conn)
+        .await?;
+
+    let was_set = result.is_some();
+    debug!(
+        "JSON.SET NX key: {} - was_set: {}",
+        index_key, was_set
+    );
+
+    Ok(was_set)
+}
+
 /// Deletes multiple keys from Redis.
 ///
 /// This function removes the specified keys from Redis. If a key does not exist, no error is returned.

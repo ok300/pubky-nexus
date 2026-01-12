@@ -63,6 +63,32 @@ pub trait RedisOps: Serialize + DeserializeOwned + Send + Sync {
         json::put(&prefix, &key_parts.join(":"), self, None, expiration).await
     }
 
+    /// Sets the data in Redis only if the key does not already exist (atomic NX operation).
+    ///
+    /// This method uses Redis's NX flag to atomically set a value only if the key doesn't exist,
+    /// avoiding TOCTOU race conditions in concurrent environments.
+    ///
+    /// # Arguments
+    ///
+    /// * `key_parts` - A slice of string slices that represent the parts used to form the key under which the value is stored
+    /// * `prefix` - An optional string representing the prefix for the Redis keys. If `Some(String)`, the prefix will be used
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` if the value was set (key didn't exist), `Ok(false)` if the key already existed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails, such as if the Redis connection is unavailable.
+    async fn put_index_json_nx(
+        &self,
+        key_parts: &[&str],
+        prefix: Option<String>,
+    ) -> Result<bool, DynError> {
+        let prefix = prefix.unwrap_or(Self::prefix().await);
+        json::put_nx(&prefix, &key_parts.join(":"), self).await
+    }
+
     /// Retrieves data from Redis using the provided key parts.
     ///
     /// This method deserializes the data stored under the key generated from the provided `key_parts` in Redis.

@@ -84,6 +84,35 @@ impl PostCounts {
         Ok(())
     }
 
+    /// Atomically creates PostCounts in the index only if it doesn't already exist.
+    ///
+    /// This method uses Redis's NX flag to avoid TOCTOU race conditions when
+    /// initializing post counts during parallel processing.
+    ///
+    /// # Arguments
+    ///
+    /// * `author_id` - The ID of the post author.
+    /// * `post_id` - The ID of the post.
+    /// * `is_reply` - Whether this post is a reply (replies are not indexed in global feeds).
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` if the counts were created (didn't exist), `Ok(false)` if they already existed.
+    pub async fn put_to_index_nx(
+        &self,
+        author_id: &str,
+        post_id: &str,
+        is_reply: bool,
+    ) -> Result<bool, DynError> {
+        let was_created = self.put_index_json_nx(&[author_id, post_id], None).await?;
+
+        // Only add to engagement sorted set if newly created and not a reply
+        if was_created && !is_reply {
+            PostStream::add_to_engagement_sorted_set(self, author_id, post_id).await?;
+        }
+        Ok(was_created)
+    }
+
     /// Updates a specified JSON field in the index
     ///
     /// # Arguments

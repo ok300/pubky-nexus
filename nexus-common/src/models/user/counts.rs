@@ -76,6 +76,23 @@ impl UserCounts {
         Ok(())
     }
 
+    /// Atomically creates UserCounts in the index only if it doesn't already exist.
+    ///
+    /// This method uses Redis's NX flag to avoid TOCTOU race conditions when
+    /// initializing user counts during parallel processing.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` if the counts were created (didn't exist), `Ok(false)` if they already existed.
+    pub async fn put_to_index_nx(&self, user_id: &str) -> Result<bool, DynError> {
+        let was_created = self.put_index_json_nx(&[user_id], None).await?;
+        if was_created {
+            UserStream::add_to_most_followed_sorted_set(user_id, self).await?;
+            UserStream::add_to_influencers_sorted_set(user_id, self).await?;
+        }
+        Ok(was_created)
+    }
+
     pub async fn update_index_field(
         author_id: &str,
         field: &str,
