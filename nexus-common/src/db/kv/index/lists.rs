@@ -1,11 +1,12 @@
 use crate::db::get_redis_conn;
 use crate::types::DynError;
-use deadpool_redis::redis::AsyncCommands;
+use deadpool_redis::redis::{AsyncCommands, pipe};
 
 /// Adds elements to a Redis list.
 ///
-/// This function appends elements to the specified Redis list. If the list doesn't exist,
-/// it creates a new list.
+/// This function replaces the contents of the specified Redis list with the provided values.
+/// If the list doesn't exist, it creates a new list. This prevents duplicate entries
+/// during re-indexing operations.
 ///
 /// # Arguments
 ///
@@ -22,7 +23,16 @@ pub async fn put(prefix: &str, key: &str, values: &[&str]) -> Result<(), DynErro
     }
     let index_key = format!("{prefix}:{key}");
     let mut redis_conn = get_redis_conn().await?;
-    let _: () = redis_conn.rpush(index_key, values).await?;
+
+    // Use a pipeline to atomically delete the old list and add new values
+    // This prevents duplicate entries during re-indexing
+    let _: () = pipe()
+        .atomic()
+        .del(&index_key)
+        .rpush(&index_key, values)
+        .query_async(&mut redis_conn)
+        .await?;
+
     Ok(())
 }
 
