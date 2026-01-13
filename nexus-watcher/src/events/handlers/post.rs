@@ -25,13 +25,13 @@ pub async fn sync_put(
     post_id: String,
 ) -> Result<(), DynError> {
     debug!("Indexing new post: {}/{}", author_id, post_id);
-    // Create PostDetails object
+
+    // Create PostDetails and identify relationships
     let post_details = PostDetails::from_homeserver(post.clone(), &author_id, &post_id).await?;
-    // We avoid indexing replies into global feed sorted sets
     let is_reply = post.parent.is_some();
-    // PRE-INDEX operation, identify the post relationship
     let mut post_relationships = PostRelationships::from_homeserver(&post);
 
+    // Put to graph and handle outcome
     let existed = match post_details.put_to_graph(&post_relationships).await? {
         OperationOutcome::CreatedOrDeleted => false,
         OperationOutcome::Updated => true,
@@ -40,6 +40,7 @@ pub async fn sync_put(
         }
     };
 
+    // Handle existing posts (edits)
     if existed {
         return handle_existing_post(post, author_id, post_id, post_details).await;
     }
