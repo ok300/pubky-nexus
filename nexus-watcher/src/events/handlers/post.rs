@@ -41,14 +41,7 @@ pub async fn sync_put(
     };
 
     if existed {
-        // If the post existed, let's confirm this is an edit. Is the content different?
-        let existing_details = PostDetails::get_from_index(&author_id, &post_id)
-            .await?
-            .ok_or("An existing post in graph, could not be retrieved from index")?;
-        if existing_details.content != post_details.content {
-            sync_edit(post, author_id, post_id, post_details).await?;
-        }
-        return Ok(());
+        return handle_existing_post(post, author_id, post_id, post_details).await;
     }
 
     // IMPORTANT: Handle the mentions before traverse the graph (reindex_post) for that post
@@ -238,6 +231,24 @@ async fn handle_missing_dependencies(
     }
 
     Err(EventProcessorError::missing_dependencies(dependency_event_keys).into())
+}
+
+/// Handles existing posts by checking for content changes and triggering sync_edit if needed
+async fn handle_existing_post(
+    post: PubkyAppPost,
+    author_id: PubkyId,
+    post_id: String,
+    post_details: PostDetails,
+) -> Result<(), DynError> {
+    let existing_details = PostDetails::get_from_index(&author_id, &post_id)
+        .await?
+        .ok_or("An existing post in graph, could not be retrieved from index")?;
+
+    if existing_details.content != post_details.content {
+        sync_edit(post, author_id, post_id, post_details).await?;
+    }
+
+    Ok(())
 }
 
 async fn sync_edit(
