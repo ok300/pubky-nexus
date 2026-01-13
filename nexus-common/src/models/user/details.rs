@@ -6,9 +6,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use neo4rs::Query;
 use pubky_app_specs::{PubkyAppUser, PubkyAppUserLink, PubkyId};
-use serde::{Deserialize, Deserializer, Serialize};
-use serde_json;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+
+use super::deserialize::deserialize_user_links;
 
 #[async_trait]
 impl RedisOps for UserDetails {}
@@ -44,36 +45,6 @@ pub struct UserDetails {
     pub status: Option<String>,
     pub image: Option<String>,
     pub indexed_at: i64,
-}
-
-fn deserialize_user_links<'de, D>(
-    deserializer: D,
-) -> Result<Option<Vec<PubkyAppUserLink>>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    // Deserialize into serde_json::Value first
-    let value = serde_json::Value::deserialize(deserializer)?;
-
-    // Handle both cases
-    match value {
-        serde_json::Value::String(s) => {
-            // If it's a string, parse the string as JSON
-            let urls: Option<Vec<PubkyAppUserLink>> =
-                serde_json::from_str(&s).map_err(serde::de::Error::custom)?;
-            Ok(urls)
-        }
-        serde_json::Value::Array(arr) => {
-            // If it's already an array, deserialize it directly
-            let urls: Vec<PubkyAppUserLink> = serde_json::from_value(serde_json::Value::Array(arr))
-                .map_err(serde::de::Error::custom)?;
-            Ok(Some(urls))
-        }
-        serde_json::Value::Null => Ok(None),
-        _ => Err(serde::de::Error::custom(
-            "Expected either a string, an array or null",
-        )),
-    }
 }
 
 impl UserDetails {
