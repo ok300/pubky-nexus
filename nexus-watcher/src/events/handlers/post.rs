@@ -57,15 +57,8 @@ pub async fn sync_put(
     // Phase 3: Process repost indexes
     process_repost_indexes(&post_relationships, &author_id, &post_details).await?;
 
-    // PHASE 4: Add post related content
-    let indexing_results = tokio::join!(
-        post_relationships.put_to_index(&author_id, &post_id),
-        post_details.put_to_index(&author_id, reply_parent_post_key_wrapper, false)
-    );
-
-    handle_indexing_results!(indexing_results.0, indexing_results.1);
-
-    Ok(())
+    // Phase 4: Finalize post indexing
+    finalize_post_indexing(&post_relationships, &post_details, &author_id, &post_id, reply_parent_post_key_wrapper).await
 }
 
 /// Handles missing dependencies by collecting dependency keys and triggering homeserver ingestion
@@ -285,6 +278,23 @@ async fn process_repost_indexes(
     );
 
     handle_indexing_results!(indexing_results.0, indexing_results.1, indexing_results.2);
+    Ok(())
+}
+
+/// Finalizes post indexing by saving relationships and details to the index
+async fn finalize_post_indexing(
+    post_relationships: &PostRelationships,
+    post_details: &PostDetails,
+    author_id: &PubkyId,
+    post_id: &str,
+    reply_parent_post_key_wrapper: Option<(String, String)>,
+) -> Result<(), DynError> {
+    let indexing_results = tokio::join!(
+        post_relationships.put_to_index(author_id, post_id),
+        post_details.put_to_index(author_id, reply_parent_post_key_wrapper, false)
+    );
+
+    handle_indexing_results!(indexing_results.0, indexing_results.1);
     Ok(())
 }
 
