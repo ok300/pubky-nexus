@@ -47,34 +47,8 @@ pub async fn sync_put(
     // Handle mentions
     handle_mentions(&author_id, &post_id, &post_details.content, &mut post_relationships).await?;
 
-    // SAVE TO INDEX - PHASE 1, update post counts
-    let indexing_results = tokio::join!(
-        // TODO: Use SCARD on a set for unique tag count to avoid race conditions in parallel processing
-        async {
-            // Create post counts index
-            // If new post (no existing counts) save a new PostCounts.
-            if PostCounts::get_from_index(&author_id, &post_id)
-                .await?
-                .is_none()
-            {
-                PostCounts::default()
-                    .put_to_index(&author_id, &post_id, is_reply)
-                    .await?
-            }
-            Ok::<(), DynError>(())
-        },
-        // TODO: Use SCARD on a set for unique tag count to avoid race conditions in parallel processing
-        // Update user counts with the new post
-        UserCounts::update(&author_id, "posts", JsonAction::Increment(1), None),
-        async {
-            if is_reply {
-                UserCounts::update(&author_id, "replies", JsonAction::Increment(1), None).await?;
-            };
-            Ok::<(), DynError>(())
-        }
-    );
-
-    handle_indexing_results!(indexing_results.0, indexing_results.1, indexing_results.2);
+    // Phase 1: Update post and user counts
+    update_post_and_user_counts(&author_id, &post_id, is_reply).await?;
 
     // Use that index wrapper to add a post reply
     let mut reply_parent_post_key_wrapper: Option<(String, String)> = None;
@@ -252,6 +226,40 @@ async fn handle_mentions(
         }
     }
 
+    Ok(())
+}
+
+/// Updates post counts and user counts in parallel
+async fn update_post_and_user_counts(
+    author_id: &PubkyId,
+    post_id: &str,
+    is_reply: bool,
+) -> Result<(), DynError> {
+    let indexing_results = tokio::join!(
+        // Create post counts index if it doesn't exist
+        async {
+            if PostCounts::get_from_index(author_id, post_id)
+                .await?
+                .is_none()
+            {
+                PostCounts::default()
+                    .put_to_index(author_id, post_id, is_reply)
+                    .await?
+            }
+            Ok::<(), DynError>(())
+        },
+        // Update user post count
+        UserCounts::update(author_id, "posts", JsonAction::Increment(1), None),
+        // Update user reply count if applicable
+        async {
+            if is_reply {
+                UserCounts::update(author_id, "replies", JsonAction::Increment(1), None).await?;
+            }
+            Ok::<(), DynError>(())
+        }
+    );
+
+    handle_indexing_results!(indexing_results.0, indexing_results.1, indexing_results.2);
     Ok(())
 }
 
