@@ -26,40 +26,37 @@ impl PostView {
         limit_tags: Option<usize>,
         limit_taggers: Option<usize>,
     ) -> Result<Option<Self>, DynError> {
-        // Perform all operations concurrently
-        let (details, counts, bookmark, relationships) = tokio::try_join!(
-            PostDetails::get_by_id(author_id, post_id),
+        // Fetch post details first, return early if post doesn't exist
+        let details = match PostDetails::get_by_id(author_id, post_id).await? {
+            Some(details) => details,
+            None => return Ok(None),
+        };
+
+        // Fetch counts, bookmark, and relationships concurrently
+        let (counts, bookmark, relationships) = tokio::try_join!(
             PostCounts::get_by_id(author_id, post_id),
             Bookmark::get_by_id(author_id, post_id, viewer_id),
             PostRelationships::get_by_id(author_id, post_id),
         )?;
 
-        let details = match details {
-            None => return Ok(None),
-            Some(details) => details,
-        };
-
         let counts = counts.unwrap_or_default();
         let relationships = relationships.unwrap_or_default();
 
-        // Before fetching post tags, check if the post has any tags
-        // Without this check, the index search will return a NONE because the tag index
-        // doesn't exist, leading us to query the graph unnecessarily, assuming the data wasn't indexed
-        let tags = match counts.tags {
-            0 => Vec::new(),
-            _ => {
-                TagPost::get_by_id(
-                    author_id,
-                    Some(post_id),
-                    None,
-                    limit_tags,
-                    limit_taggers,
-                    viewer_id,
-                    None, // Avoid by default WoT tags in a Post
-                )
-                .await?
-                .unwrap_or_default()
-            }
+        // Fetch post tags only if the post has any tags
+        let tags = if counts.tags > 0 {
+            TagPost::get_by_id(
+                author_id,
+                Some(post_id),
+                None,
+                limit_tags,
+                limit_taggers,
+                viewer_id,
+                None, // Avoid by default WoT tags in a Post
+            )
+            .await?
+            .unwrap_or_default()
+        } else {
+            Vec::new()
         };
 
         Ok(Some(Self {
