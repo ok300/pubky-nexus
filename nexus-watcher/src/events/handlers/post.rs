@@ -50,63 +50,9 @@ pub async fn sync_put(
     // Phase 1: Update post and user counts
     update_post_and_user_counts(&author_id, &post_id, is_reply).await?;
 
-    // Use that index wrapper to add a post reply
-    let mut reply_parent_post_key_wrapper: Option<(String, String)> = None;
-
-    // PHASE 2: Process POST REPLIES indexes
-    if let Some(replied_uri) = &post_relationships.replied {
-        let parent_author_id = replied_uri.user_id.clone();
-        let parent_post_id = match replied_uri.resource.clone() {
-            Resource::Post(id) => id,
-            _ => return Err("Replied URI is not a Post resource".into()),
-        };
-        let replied_uri_str = replied_uri.try_to_uri_str()?;
-
-        // Define the reply parent key to index the reply later
-        reply_parent_post_key_wrapper =
-            Some((parent_author_id.to_string(), parent_post_id.clone()));
-
-        let parent_post_key_parts: &[&str; 2] = &[&parent_author_id, &parent_post_id];
-
-        let indexing_results = tokio::join!(
-            PostCounts::update_index_field(
-                parent_post_key_parts,
-                "replies",
-                JsonAction::Increment(1),
-                None
-            ),
-            async {
-                if !post_relationships_is_reply(&parent_author_id, &parent_post_id).await? {
-                    PostStream::put_score_index_sorted_set(
-                        &POST_TOTAL_ENGAGEMENT_KEY_PARTS,
-                        parent_post_key_parts,
-                        ScoreAction::Increment(1.0),
-                    )
-                    .await?;
-                }
-                Ok::<(), DynError>(())
-            },
-            PostStream::add_to_post_reply_sorted_set(
-                parent_post_key_parts,
-                &author_id,
-                &post_id,
-                post_details.indexed_at,
-            ),
-            Notification::new_post_reply(
-                &author_id,
-                &replied_uri_str,
-                &post_details.uri,
-                &parent_author_id,
-            )
-        );
-
-        handle_indexing_results!(
-            indexing_results.0,
-            indexing_results.1,
-            indexing_results.2,
-            indexing_results.3
-        );
-    }
+    // Phase 2: Process reply indexes and get parent key
+    let reply_parent_post_key_wrapper =
+        process_reply_indexes(&post_relationships, &author_id, &post_id, &post_details).await?;
 
     // PHASE 3: Process POST REPOSTS indexes
     if let Some(reposted_uri) = &post_relationships.reposted {
@@ -261,6 +207,71 @@ async fn update_post_and_user_counts(
 
     handle_indexing_results!(indexing_results.0, indexing_results.1, indexing_results.2);
     Ok(())
+}
+
+/// Processes reply indexes by updating parent post counts and creating notifications
+async fn process_reply_indexes(
+    post_relationships: &PostRelationships,
+    author_id: &PubkyId,
+    post_id: &str,
+    post_details: &PostDetails,
+) -> Result<Option<(String, String)>, DynError> {
+    let Some(replied_uri) = &post_relationships.replied else {
+        return Ok(None);
+    };
+
+    let parent_author_id = replied_uri.user_id.clone();
+    let parent_post_id = match replied_uri.resource.clone() {
+        Resource::Post(id) => id,
+        _ => return Err("Replied URI is not a Post resource".into()),
+    };
+    let replied_uri_str = replied_uri.try_to_uri_str()?;
+    let parent_post_key_parts: &[&str; 2] = &[&parent_author_id, &parent_post_id];
+
+    let indexing_results = tokio::join!(
+        // Increment parent post reply count
+        PostCounts::update_index_field(
+            parent_post_key_parts,
+            "replies",
+            JsonAction::Increment(1),
+            None
+        ),
+        // Update engagement score if parent is not a reply
+        async {
+            if !post_relationships_is_reply(&parent_author_id, &parent_post_id).await? {
+                PostStream::put_score_index_sorted_set(
+                    &POST_TOTAL_ENGAGEMENT_KEY_PARTS,
+                    parent_post_key_parts,
+                    ScoreAction::Increment(1.0),
+                )
+                .await?;
+            }
+            Ok::<(), DynError>(())
+        },
+        // Add to reply sorted set
+        PostStream::add_to_post_reply_sorted_set(
+            parent_post_key_parts,
+            author_id,
+            post_id,
+            post_details.indexed_at,
+        ),
+        // Send notification
+        Notification::new_post_reply(
+            author_id,
+            &replied_uri_str,
+            &post_details.uri,
+            &parent_author_id,
+        )
+    );
+
+    handle_indexing_results!(
+        indexing_results.0,
+        indexing_results.1,
+        indexing_results.2,
+        indexing_results.3
+    );
+
+    Ok(Some((parent_author_id.to_string(), parent_post_id)))
 }
 
 async fn sync_edit(
