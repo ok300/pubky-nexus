@@ -36,28 +36,7 @@ pub async fn sync_put(
         OperationOutcome::CreatedOrDeleted => false,
         OperationOutcome::Updated => true,
         OperationOutcome::MissingDependency => {
-            let mut dependency_event_keys = Vec::new();
-            if let Some(replied_to_uri) = &post_relationships.replied {
-                let reply_dependency = RetryEvent::generate_index_key_from_uri(replied_to_uri);
-                dependency_event_keys.push(reply_dependency);
-
-                if let Err(e) = Homeserver::maybe_ingest_for_post(replied_to_uri).await {
-                    tracing::error!("Failed to ingest homeserver: {e}");
-                }
-            }
-            if let Some(reposted_uri) = &post_relationships.reposted {
-                let reply_dependency = RetryEvent::generate_index_key_from_uri(reposted_uri);
-                dependency_event_keys.push(reply_dependency);
-
-                if let Err(e) = Homeserver::maybe_ingest_for_post(reposted_uri).await {
-                    tracing::error!("Failed to ingest homeserver: {e}");
-                }
-            }
-            if dependency_event_keys.is_empty() {
-                let key = RetryEvent::generate_index_key_from_uri(&author_id.to_uri());
-                dependency_event_keys.push(key);
-            }
-            return Err(EventProcessorError::missing_dependencies(dependency_event_keys).into());
+            return handle_missing_dependencies(&post_relationships, &author_id).await;
         }
     };
 
@@ -226,6 +205,39 @@ pub async fn sync_put(
     handle_indexing_results!(indexing_results.0, indexing_results.1);
 
     Ok(())
+}
+
+/// Handles missing dependencies by collecting dependency keys and triggering homeserver ingestion
+async fn handle_missing_dependencies(
+    post_relationships: &PostRelationships,
+    author_id: &PubkyId,
+) -> Result<(), DynError> {
+    let mut dependency_event_keys = Vec::new();
+
+    if let Some(replied_to_uri) = &post_relationships.replied {
+        let reply_dependency = RetryEvent::generate_index_key_from_uri(replied_to_uri);
+        dependency_event_keys.push(reply_dependency);
+
+        if let Err(e) = Homeserver::maybe_ingest_for_post(replied_to_uri).await {
+            tracing::error!("Failed to ingest homeserver: {e}");
+        }
+    }
+
+    if let Some(reposted_uri) = &post_relationships.reposted {
+        let reply_dependency = RetryEvent::generate_index_key_from_uri(reposted_uri);
+        dependency_event_keys.push(reply_dependency);
+
+        if let Err(e) = Homeserver::maybe_ingest_for_post(reposted_uri).await {
+            tracing::error!("Failed to ingest homeserver: {e}");
+        }
+    }
+
+    if dependency_event_keys.is_empty() {
+        let key = RetryEvent::generate_index_key_from_uri(&author_id.to_uri());
+        dependency_event_keys.push(key);
+    }
+
+    Err(EventProcessorError::missing_dependencies(dependency_event_keys).into())
 }
 
 async fn sync_edit(
