@@ -44,23 +44,8 @@ pub async fn sync_put(
         return handle_existing_post(post, author_id, post_id, post_details).await;
     }
 
-    // IMPORTANT: Handle the mentions before traverse the graph (reindex_post) for that post
-    // Handle "MENTIONED" relationships
-    put_mentioned_relationships(
-        &author_id,
-        &post_id,
-        &post_details.content,
-        &mut post_relationships,
-    )
-    .await?;
-
-    // We only consider the first mentioned (tagged) user, to mitigate DoS attacks against Nexus
-    // whereby posts with many (inexistent) tagged PKs can cause Nexus to spend a lot of time trying to resolve them
-    if let Some(mentioned_user_id) = &post_relationships.mentioned.first() {
-        if let Err(e) = Homeserver::maybe_ingest_for_user(mentioned_user_id).await {
-            tracing::error!("Failed to ingest homeserver: {e}");
-        }
-    }
+    // Handle mentions
+    handle_mentions(&author_id, &post_id, &post_details.content, &mut post_relationships).await?;
 
     // SAVE TO INDEX - PHASE 1, update post counts
     let indexing_results = tokio::join!(
@@ -246,6 +231,25 @@ async fn handle_existing_post(
 
     if existing_details.content != post_details.content {
         sync_edit(post, author_id, post_id, post_details).await?;
+    }
+
+    Ok(())
+}
+
+/// Handles mentions in post content and triggers homeserver ingestion for mentioned users
+async fn handle_mentions(
+    author_id: &PubkyId,
+    post_id: &str,
+    content: &str,
+    post_relationships: &mut PostRelationships,
+) -> Result<(), DynError> {
+    put_mentioned_relationships(author_id, post_id, content, post_relationships).await?;
+
+    // Only consider the first mentioned user to mitigate DoS attacks
+    if let Some(mentioned_user_id) = &post_relationships.mentioned.first() {
+        if let Err(e) = Homeserver::maybe_ingest_for_user(mentioned_user_id).await {
+            tracing::error!("Failed to ingest homeserver: {e}");
+        }
     }
 
     Ok(())
