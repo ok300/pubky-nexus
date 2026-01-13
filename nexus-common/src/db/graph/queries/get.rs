@@ -375,6 +375,29 @@ pub fn get_user_following(user_id: &str, skip: Option<usize>, limit: Option<usiz
     query(&query_string).param("user_id", user_id)
 }
 
+pub fn get_user_friends(user_id: &str, skip: Option<usize>, limit: Option<usize>) -> Query {
+    let mut query_string = String::from(
+        "
+        MATCH (u:User {id: $user_id})
+        WITH u
+        MATCH (u)-[:FOLLOWS]->(f:User)
+        WHERE (f)-[:FOLLOWS]->(u)
+        WITH u, f",
+    );
+    if let Some(skip_value) = skip {
+        query_string.push_str(&format!(" SKIP {skip_value}"));
+    }
+    if let Some(limit_value) = limit {
+        query_string.push_str(&format!(" LIMIT {limit_value}"));
+    }
+    query_string.push_str(
+        "
+        RETURN COUNT(u) > 0 AS user_exists,
+               COLLECT(f.id) AS friend_ids",
+    );
+    query(&query_string).param("user_id", user_id)
+}
+
 pub fn get_user_muted(user_id: &str, skip: Option<usize>, limit: Option<usize>) -> Query {
     let mut query_string = String::from(
         "MATCH (u:User {id: $user_id}) 

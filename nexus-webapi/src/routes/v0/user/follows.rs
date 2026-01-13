@@ -6,8 +6,25 @@ use axum::extract::{Path, Query};
 use axum::Json;
 use nexus_common::models::follow::{Followers, Following, Friends, UserFollows};
 use nexus_common::types::Pagination;
+use serde::Serialize;
 use tracing::debug;
 use utoipa::OpenApi;
+
+async fn user_follows_handler<T>(user_id: &str, query: &Pagination) -> Result<Json<T>>
+where
+    T: UserFollows + Serialize,
+{
+    let skip = query.skip.unwrap_or(0);
+    let limit = query.limit.unwrap_or(200);
+
+    match T::get_by_id(user_id, Some(skip), Some(limit)).await {
+        Ok(Some(data)) => Ok(Json(data)),
+        Ok(None) => Err(Error::UserNotFound {
+            user_id: user_id.to_string(),
+        }),
+        Err(source) => Err(Error::InternalServerError { source }),
+    }
+}
 
 #[utoipa::path(
     get,
@@ -30,15 +47,7 @@ pub async fn user_followers_handler(
     Query(query): Query<Pagination>,
 ) -> Result<Json<Followers>> {
     debug!("GET {USER_FOLLOWERS_ROUTE} user_id:{}", user_id);
-
-    let skip = query.skip.unwrap_or(0);
-    let limit = query.limit.unwrap_or(200);
-
-    match Followers::get_by_id(&user_id, Some(skip), Some(limit)).await {
-        Ok(Some(followers)) => Ok(Json(followers)),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
-    }
+    user_follows_handler::<Followers>(&user_id, &query).await
 }
 
 #[utoipa::path(
@@ -62,15 +71,7 @@ pub async fn user_following_handler(
     Query(query): Query<Pagination>,
 ) -> Result<Json<Following>> {
     debug!("GET {USER_FOLLOWING_ROUTE} user_id:{}", user_id);
-
-    let skip = query.skip.unwrap_or(0);
-    let limit = query.limit.unwrap_or(200);
-
-    match Following::get_by_id(&user_id, Some(skip), Some(limit)).await {
-        Ok(Some(following)) => Ok(Json(following)),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
-    }
+    user_follows_handler::<Following>(&user_id, &query).await
 }
 
 #[utoipa::path(
@@ -94,15 +95,7 @@ pub async fn user_friends_handler(
     Query(query): Query<Pagination>,
 ) -> Result<Json<Friends>> {
     debug!("GET {USER_FRIENDS_ROUTE} user_id:{}", user_id);
-
-    let skip = query.skip.unwrap_or(0);
-    let limit = query.limit.unwrap_or(200);
-
-    match Friends::get_by_id(&user_id, Some(skip), Some(limit)).await {
-        Ok(Some(friends)) => Ok(Json(friends)),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
-    }
+    user_follows_handler::<Friends>(&user_id, &query).await
 }
 
 #[derive(OpenApi)]
