@@ -664,20 +664,12 @@ pub fn post_stream(
     // Apply sorting and get the ORDER BY clause
     let order_clause = builder.add_sorting_logic();
 
-    // Final return statement
-    builder.cypher.push_str(&format!(
-        "RETURN author.id AS author_id, p.id AS post_id, p.indexed_at AS indexed_at\n{order_clause}\n"
-    ));
+    // Add return statement and pagination
+    builder
+        .add_return_clause(&order_clause)
+        .add_pagination();
 
-    // Apply skip and limit
-    if let Some(skip) = builder.pagination.skip {
-        builder.cypher.push_str(&format!("SKIP {skip}\n"));
-    }
-    if let Some(limit) = builder.pagination.limit {
-        builder.cypher.push_str(&format!("LIMIT {limit}\n"));
-    }
-
-    // Build the query and apply parameters using `param` method
+    // Build the query and apply parameters
     builder.build(tags)
 }
 
@@ -878,6 +870,23 @@ impl PostStreamQueryBuilder {
         }
 
         "ORDER BY total_engagement DESC".to_string()
+    }
+
+    fn add_return_clause(&mut self, order_clause: &str) -> &mut Self {
+        self.cypher.push_str(&format!(
+            "RETURN author.id AS author_id, p.id AS post_id, p.indexed_at AS indexed_at\n{order_clause}\n"
+        ));
+        self
+    }
+
+    fn add_pagination(&mut self) -> &mut Self {
+        if let Some(skip) = self.pagination.skip {
+            self.cypher.push_str(&format!("SKIP {skip}\n"));
+        }
+        if let Some(limit) = self.pagination.limit {
+            self.cypher.push_str(&format!("LIMIT {limit}\n"));
+        }
+        self
     }
 
     fn append_condition(&mut self, condition: &str) {
