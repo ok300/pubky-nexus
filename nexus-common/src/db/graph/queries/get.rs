@@ -673,24 +673,6 @@ pub fn post_stream(
     builder.build(tags)
 }
 
-/// Appends a condition to the Cypher query, using `WHERE` if no `WHERE` clause
-/// has been applied yet, or `AND` if a `WHERE` clause is already present.
-///
-/// # Arguments
-///
-/// * `cypher` - A mutable reference to the Cypher query string to which the condition will be appended
-/// * `condition` - The condition to be added to the query
-/// * `where_clause_applied` - A mutable reference to a boolean flag indicating whether a `WHERE` clause
-///   has already been applied to the query.
-fn append_condition(cypher: &mut String, condition: &str, where_clause_applied: &mut bool) {
-    if *where_clause_applied {
-        cypher.push_str(&format!("AND {condition}\n"));
-    } else {
-        cypher.push_str(&format!("WHERE {condition}\n"));
-        *where_clause_applied = true;
-    }
-}
-
 /// Builds a `Query` object by applying the necessary parameters to the Cypher query string.
 ///
 /// This function takes the constructed Cypher query string and applies all the relevant parameters
