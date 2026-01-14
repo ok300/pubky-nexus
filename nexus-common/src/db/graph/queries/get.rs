@@ -661,56 +661,8 @@ pub fn post_stream(
         .add_parent_posts_filter()
         .add_distinct_clause();
 
-    // Apply time interval conditions. Only can be applied with timeline sorting
-    // The engagament score has to be computed
-    if builder.sorting == StreamSorting::Timeline {
-        if builder.pagination.start.is_some() {
-            builder.append_condition("p.indexed_at <= $start");
-        }
-
-        if builder.pagination.end.is_some() {
-            builder.append_condition("p.indexed_at >= $end");
-        }
-    }
-
-    // Apply StreamSorting
-    // Conditionally compute engagement counts only for TotalEngagement sorting
-    let order_clause = match builder.sorting {
-        StreamSorting::Timeline => "ORDER BY p.indexed_at DESC".to_string(),
-        StreamSorting::TotalEngagement => {
-            // TODO: These optional matches could potentially be combined/collected to improve performance
-            builder.cypher.push_str(
-                "
-                // Count tags
-                OPTIONAL MATCH (p)<-[tag:TAGGED]-(:User)
-                // Count replies
-                OPTIONAL MATCH (p)<-[reply:REPLIED]-(:Post)
-                // Count reposts
-                OPTIONAL MATCH (p)<-[repost:REPOSTED]-(:Post)
-
-                WITH p, author,
-                    COUNT(DISTINCT tag) AS tags_count,
-                    COUNT(DISTINCT reply) AS replies_count,
-                    COUNT(DISTINCT repost) AS reposts_count,
-                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
-                ",
-            );
-
-            // Initialise again
-            builder.where_clause_applied = false;
-
-            // Add total_engagement to filter by engagement the post
-            if builder.pagination.start.is_some() {
-                builder.append_condition("total_engagement <= $start");
-            }
-
-            if builder.pagination.end.is_some() {
-                builder.append_condition("total_engagement >= $end");
-            }
-
-            "ORDER BY total_engagement DESC".to_string()
-        }
-    };
+    // Apply sorting and get the ORDER BY clause
+    let order_clause = builder.add_sorting_logic();
 
     // Final return statement
     builder.cypher.push_str(&format!(
@@ -877,6 +829,55 @@ impl PostStreamQueryBuilder {
     fn add_distinct_clause(&mut self) -> &mut Self {
         self.cypher.push_str("WITH DISTINCT p, author\n");
         self
+    }
+
+    fn add_sorting_logic(&mut self) -> String {
+        match self.sorting {
+            StreamSorting::Timeline => self.add_timeline_sorting(),
+            StreamSorting::TotalEngagement => self.add_engagement_sorting(),
+        }
+    }
+
+    fn add_timeline_sorting(&mut self) -> String {
+        if self.pagination.start.is_some() {
+            self.append_condition("p.indexed_at <= $start");
+        }
+        if self.pagination.end.is_some() {
+            self.append_condition("p.indexed_at >= $end");
+        }
+        "ORDER BY p.indexed_at DESC".to_string()
+    }
+
+    fn add_engagement_sorting(&mut self) -> String {
+        // TODO: These optional matches could potentially be combined/collected to improve performance
+        self.cypher.push_str(
+            "
+                // Count tags
+                OPTIONAL MATCH (p)<-[tag:TAGGED]-(:User)
+                // Count replies
+                OPTIONAL MATCH (p)<-[reply:REPLIED]-(:Post)
+                // Count reposts
+                OPTIONAL MATCH (p)<-[repost:REPOSTED]-(:Post)
+
+                WITH p, author,
+                    COUNT(DISTINCT tag) AS tags_count,
+                    COUNT(DISTINCT reply) AS replies_count,
+                    COUNT(DISTINCT repost) AS reposts_count,
+                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
+                ",
+        );
+
+        // Reset WHERE clause state for engagement filtering
+        self.where_clause_applied = false;
+
+        if self.pagination.start.is_some() {
+            self.append_condition("total_engagement <= $start");
+        }
+        if self.pagination.end.is_some() {
+            self.append_condition("total_engagement >= $end");
+        }
+
+        "ORDER BY total_engagement DESC".to_string()
     }
 
     fn append_condition(&mut self, condition: &str) {
