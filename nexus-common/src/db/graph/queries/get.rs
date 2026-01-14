@@ -652,27 +652,10 @@ pub fn post_stream(
     build_observer_match(&mut builder, &source);
     builder.append("MATCH (p:Post)<-[:AUTHORED]-(author:User)\n");
     build_source_relationship(&mut builder, &source);
-
-    // Apply tags
-    if tags.is_some() {
-        builder.append("MATCH (User)-[tag:TAGGED]->(p)\n");
-        builder.add_condition("tag.label IN $labels");
-    }
-
-    // If source has an author, add where clause. It is related with source pattern matching
-    // If the source is Author, it is enough adding where clause. Not need to relate nodes
-    if source.get_author().is_some() {
-        builder.add_condition("author.id = $author_id");
-    }
-
-    // If post kind is provided, add the corresponding condition
-    if kind.is_some() {
-        builder.add_condition("p.kind = $kind");
-    }
-
-    // Filter just the parent posts: StreamSource:PostReplies and StreamSource:AuthorReplies do not reach that query
-    // so we do not need any condition to filter just parent nodes
-    builder.add_condition("NOT ( (p)-[:REPLIED]->(:Post) )");
+    build_tag_filter(&mut builder, tags);
+    build_author_filter(&mut builder, &source);
+    build_kind_filter(&mut builder, &kind);
+    build_parent_post_filter(&mut builder);
 
     // Apply time interval conditions. Only can be applied with timeline sorting
     // The engagament score has to be computed
@@ -767,6 +750,33 @@ fn build_source_relationship(builder: &mut CypherQueryBuilder, source: &StreamSo
     if let Some(clause) = relationship {
         builder.append(clause);
     }
+}
+
+/// Adds tag filtering if tags are specified
+fn build_tag_filter(builder: &mut CypherQueryBuilder, tags: &Option<Vec<String>>) {
+    if tags.is_some() {
+        builder.append("MATCH (User)-[tag:TAGGED]->(p)\n");
+        builder.add_condition("tag.label IN $labels");
+    }
+}
+
+/// Adds author filtering for sources that specify an author
+fn build_author_filter(builder: &mut CypherQueryBuilder, source: &StreamSource) {
+    if source.get_author().is_some() {
+        builder.add_condition("author.id = $author_id");
+    }
+}
+
+/// Adds post kind filtering if specified
+fn build_kind_filter(builder: &mut CypherQueryBuilder, kind: &Option<PubkyAppPostKind>) {
+    if kind.is_some() {
+        builder.add_condition("p.kind = $kind");
+    }
+}
+
+/// Filters to only include parent posts (not replies)
+fn build_parent_post_filter(builder: &mut CypherQueryBuilder) {
+    builder.add_condition("NOT ( (p)-[:REPLIED]->(:Post) )");
 }
 
 /// A builder for constructing Cypher queries with automatic WHERE/AND clause management
