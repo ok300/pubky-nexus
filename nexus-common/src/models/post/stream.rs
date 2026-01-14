@@ -19,6 +19,95 @@ pub const POST_REPLIES_PER_USER_KEY_PARTS: [&str; 2] = ["Posts", "AuthorReplies"
 pub const POST_REPLIES_PER_POST_KEY_PARTS: [&str; 2] = ["Posts", "PostReplies"];
 const BOOKMARKS_USER_KEY_PARTS: [&str; 2] = ["Bookmarks", "User"];
 
+enum StreamFetchStrategy {
+    Global {
+        sorting: StreamSorting,
+    },
+    Tagged {
+        tag: String,
+        sorting: StreamSorting,
+    },
+    Bookmarked {
+        user_id: String,
+    },
+    Replies {
+        author_id: String,
+        post_id: String,
+    },
+    Author {
+        user_id: String,
+        replies: bool,
+    },
+    Source {
+        source: StreamSource,
+    },
+    Graph {
+        source: StreamSource,
+        sorting: StreamSorting,
+        tags: Option<Vec<String>>,
+        kind: Option<PubkyAppPostKind>,
+    },
+}
+
+impl StreamFetchStrategy {
+    fn from_request(
+        source: StreamSource,
+        sorting: StreamSorting,
+        tags: Option<Vec<String>>,
+        kind: Option<PubkyAppPostKind>,
+    ) -> Self {
+        if kind.is_some() {
+            return Self::Graph {
+                source,
+                sorting,
+                tags,
+                kind,
+            };
+        }
+        match (sorting.clone(), source.clone(), tags.clone()) {
+            (StreamSorting::Timeline, StreamSource::Author { author_id }, None) => {
+                Self::Author {
+                    user_id: author_id,
+                    replies: false,
+                }
+            }
+            (_, StreamSource::All, None) => Self::Global { sorting },
+            (_, StreamSource::All, Some(tags)) if tags.len() == 1 => Self::Tagged {
+                tag: tags[0].clone(),
+                sorting,
+            },
+            (StreamSorting::Timeline, StreamSource::Following { .. }, None)
+            | (StreamSorting::Timeline, StreamSource::Followers { .. }, None)
+            | (StreamSorting::Timeline, StreamSource::Friends { .. }, None) => {
+                Self::Source { source }
+            }
+            (StreamSorting::Timeline, StreamSource::Bookmarks { observer_id }, None) => {
+                Self::Bookmarked {
+                    user_id: observer_id,
+                }
+            }
+            (
+                _,
+                StreamSource::PostReplies {
+                    author_id,
+                    post_id,
+                },
+                _,
+            ) => Self::Replies { author_id, post_id },
+            (_, StreamSource::AuthorReplies { author_id }, _) => Self::Author {
+                user_id: author_id,
+                replies: true,
+            },
+            _ => Self::Graph {
+                source,
+                sorting,
+                tags,
+                kind,
+            },
+        }
+    }
+}
+
 #[derive(ToSchema, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum StreamSource {
@@ -153,93 +242,43 @@ impl PostStream {
         tags: Option<Vec<String>>,
         kind: Option<PubkyAppPostKind>,
     ) -> Result<PostKeyStream, DynError> {
-        // Decide whether to use index or fallback to graph query
-        let use_index = Self::can_use_index(&sorting, &source, &tags, &kind);
+        let fetch_strategy =
+            StreamFetchStrategy::from_request(source.clone(), sorting.clone(), tags.clone(), kind.clone());
 
-        let post_keys = match use_index {
-            true => Self::get_from_index(source, sorting, order, &tags, pagination).await?,
-            false => Self::get_from_graph(source, sorting, &tags, pagination, kind).await?,
-        };
-
-        Ok(post_keys)
-    }
-
-    // Determine if we have a quick access sorted set for this combination
-    fn can_use_index(
-        sorting: &StreamSorting,
-        source: &StreamSource,
-        tags: &Option<Vec<String>>,
-        kind: &Option<PubkyAppPostKind>,
-    ) -> bool {
-        if kind.is_some() {
-            return false;
-        }
-        match (sorting, source, tags) {
-            // We have a sorted set for posts by a specific author
-            (StreamSorting::Timeline, StreamSource::Author { .. }, None) => true,
-            // We have a sorted set for global for any sorting
-            (_, StreamSource::All, None) => true,
-            // We have a sorted set for posts by tags for any sorting for a single tag
-            (_, StreamSource::All, Some(tags)) if tags.len() == 1 => true,
-            // We can use sorted set for posts by source only for timeline
-            (StreamSorting::Timeline, StreamSource::Following { .. }, None) => true,
-            (StreamSorting::Timeline, StreamSource::Followers { .. }, None) => true,
-            (StreamSorting::Timeline, StreamSource::Friends { .. }, None) => true,
-            // We have a sorted set for bookmarks only for timeline
-            (StreamSorting::Timeline, StreamSource::Bookmarks { .. }, None) => true,
-            // We can use sorted set of post replies
-            (_, StreamSource::PostReplies { .. }, _) => true,
-            // We can use sorted set of author replies
-            (_, StreamSource::AuthorReplies { .. }, _) => true,
-            // Other combinations require querying the graph
-            _ => false,
-        }
-    }
-
-    // Fetch posts from index
-    async fn get_from_index(
-        source: StreamSource,
-        sorting: StreamSorting,
-        order: SortOrder,
-        tags: &Option<Vec<String>>,
-        pagination: Pagination,
-    ) -> Result<PostKeyStream, DynError> {
         let start = pagination.start;
         let end = pagination.end;
         let skip = pagination.skip;
         let limit = pagination.limit;
 
-        match (source, tags) {
-            // Global post streams
-            (StreamSource::All, None) => {
-                Self::get_global_posts_keys(sorting, order, start, end, skip, limit).await
+        let post_keys = match fetch_strategy {
+            StreamFetchStrategy::Global { sorting } => {
+                Self::get_global_posts_keys(sorting, order, start, end, skip, limit).await?
             }
-            // Streams by tags
-            (StreamSource::All, Some(tags)) if tags.len() == 1 => {
-                Self::get_posts_keys_by_tag(&tags[0], sorting, start, end, skip, limit).await
+            StreamFetchStrategy::Tagged { tag, sorting } => {
+                Self::get_posts_keys_by_tag(&tag, sorting, start, end, skip, limit).await?
             }
-            // Bookmark streams
-            (StreamSource::Bookmarks { observer_id }, None) => {
-                Self::get_bookmarked_posts(&observer_id, order, start, end, skip, limit).await
+            StreamFetchStrategy::Bookmarked { user_id } => {
+                Self::get_bookmarked_posts(&user_id, order, start, end, skip, limit).await?
             }
-            // Stream of replies to specific a post
-            (StreamSource::PostReplies { author_id, post_id }, None) => {
-                Self::get_post_replies(&author_id, &post_id, order, start, end, skip, limit).await
+            StreamFetchStrategy::Replies {
+                author_id,
+                post_id,
+            } => Self::get_post_replies(&author_id, &post_id, order, start, end, skip, limit).await?,
+            StreamFetchStrategy::Author { user_id, replies } => {
+                Self::get_author_posts(&user_id, order, start, end, skip, limit, replies).await?
             }
-            // Stream of parent post from a given author
-            (StreamSource::Author { author_id }, None) => {
-                Self::get_author_posts(&author_id, order, start, end, skip, limit, false).await
+            StreamFetchStrategy::Source { source } => {
+                Self::get_posts_by_source(source, order, start, end, skip, limit).await?
             }
-            // Streams of replies from a given author
-            (StreamSource::AuthorReplies { author_id }, None) => {
-                Self::get_author_posts(&author_id, order, start, end, skip, limit, true).await
-            }
-            // Streams by simple source/reach: Following, Followers, Friends
-            (source, None) => {
-                Self::get_posts_by_source(source, order, start, end, skip, limit).await
-            }
-            _ => Ok(PostKeyStream::default()),
-        }
+            StreamFetchStrategy::Graph {
+                source,
+                sorting,
+                tags,
+                kind,
+            } => Self::get_from_graph(source, sorting, &tags, pagination, kind).await?,
+        };
+
+        Ok(post_keys)
     }
 
     // Fetch posts from index
