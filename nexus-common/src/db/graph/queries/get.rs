@@ -650,27 +650,11 @@ pub fn post_stream(
     // Initialize the query builder
     let mut builder = PostStreamQueryBuilder::new(source.clone(), sorting.clone(), pagination.clone(), kind);
 
-    // Start with the observer node if needed
-    // Needed that one for source pattern matching
-    if builder.source.get_observer().is_some() {
-        builder.cypher.push_str("MATCH (observer:User {id: $observer_id})\n");
-    }
-
-    // Base match for posts and authors
-    builder.cypher.push_str("MATCH (p:Post)<-[:AUTHORED]-(author:User)\n");
-
-    // Apply source MATCH clause
-    if let Some(query) = match builder.source {
-        StreamSource::Following { .. } => Some("MATCH (observer)-[:FOLLOWS]->(author)\n"),
-        StreamSource::Followers { .. } => Some("MATCH (observer)<-[:FOLLOWS]-(author)\n"),
-        StreamSource::Friends { .. } => {
-            Some("MATCH (observer)-[:FOLLOWS]->(author)-[:FOLLOWS]->(observer)\n")
-        }
-        StreamSource::Bookmarks { .. } => Some("MATCH (observer)-[:BOOKMARKED]->(p)\n"),
-        _ => None,
-    } {
-        builder.cypher.push_str(query);
-    }
+    // Build MATCH clauses
+    builder
+        .add_observer_match_if_needed()
+        .add_base_match()
+        .add_source_match();
 
     // Apply tags
     if tags.is_some() {
@@ -851,6 +835,35 @@ impl PostStreamQueryBuilder {
             pagination,
             kind,
         }
+    }
+
+    fn add_observer_match_if_needed(&mut self) -> &mut Self {
+        if self.source.get_observer().is_some() {
+            self.cypher.push_str("MATCH (observer:User {id: $observer_id})\n");
+        }
+        self
+    }
+
+    fn add_base_match(&mut self) -> &mut Self {
+        self.cypher.push_str("MATCH (p:Post)<-[:AUTHORED]-(author:User)\n");
+        self
+    }
+
+    fn add_source_match(&mut self) -> &mut Self {
+        let source_match = match self.source {
+            StreamSource::Following { .. } => Some("MATCH (observer)-[:FOLLOWS]->(author)\n"),
+            StreamSource::Followers { .. } => Some("MATCH (observer)<-[:FOLLOWS]-(author)\n"),
+            StreamSource::Friends { .. } => {
+                Some("MATCH (observer)-[:FOLLOWS]->(author)-[:FOLLOWS]->(observer)\n")
+            }
+            StreamSource::Bookmarks { .. } => Some("MATCH (observer)-[:BOOKMARKED]->(p)\n"),
+            _ => None,
+        };
+
+        if let Some(query) = source_match {
+            self.cypher.push_str(query);
+        }
+        self
     }
 
     fn append_condition(&mut self, condition: &str) {
