@@ -795,6 +795,42 @@ pub fn post_stream(
     build_query_with_params(&cypher, &source, tags, kind, &pagination)
 }
 
+/// A builder for constructing Cypher queries with automatic WHERE/AND clause management
+struct CypherQueryBuilder {
+    query: String,
+    where_clause_applied: bool,
+}
+
+impl CypherQueryBuilder {
+    fn new() -> Self {
+        Self {
+            query: String::new(),
+            where_clause_applied: false,
+        }
+    }
+
+    fn append(&mut self, clause: &str) {
+        self.query.push_str(clause);
+    }
+
+    fn add_condition(&mut self, condition: &str) {
+        if self.where_clause_applied {
+            self.query.push_str(&format!("AND {condition}\n"));
+        } else {
+            self.query.push_str(&format!("WHERE {condition}\n"));
+            self.where_clause_applied = true;
+        }
+    }
+
+    fn reset_where_clause(&mut self) {
+        self.where_clause_applied = false;
+    }
+
+    fn query(&self) -> &str {
+        &self.query
+    }
+}
+
 /// Appends a condition to the Cypher query, using `WHERE` if no `WHERE` clause
 /// has been applied yet, or `AND` if a `WHERE` clause is already present.
 ///
