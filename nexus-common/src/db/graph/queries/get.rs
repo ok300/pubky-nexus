@@ -657,58 +657,11 @@ pub fn post_stream(
     build_kind_filter(&mut builder, &kind);
     build_parent_post_filter(&mut builder);
 
-    // Apply time interval conditions. Only can be applied with timeline sorting
-    // The engagament score has to be computed
-    if sorting == StreamSorting::Timeline {
-        if pagination.start.is_some() {
-            builder.add_condition("p.indexed_at <= $start");
-        }
-
-        if pagination.end.is_some() {
-            builder.add_condition("p.indexed_at >= $end");
-        }
-    }
-
-    // Make unique the posts, cannot be repeated
+    // Apply sorting-specific logic
     builder.append("WITH DISTINCT p, author\n");
-
-    // Apply StreamSorting
-    // Conditionally compute engagement counts only for TotalEngagement sorting
     let order_clause = match sorting {
-        StreamSorting::Timeline => "ORDER BY p.indexed_at DESC".to_string(),
-        StreamSorting::TotalEngagement => {
-            // TODO: These optional matches could potentially be combined/collected to improve performance
-            builder.append(
-                "
-                // Count tags
-                OPTIONAL MATCH (p)<-[tag:TAGGED]-(:User)
-                // Count replies
-                OPTIONAL MATCH (p)<-[reply:REPLIED]-(:Post)
-                // Count reposts
-                OPTIONAL MATCH (p)<-[repost:REPOSTED]-(:Post)
-
-                WITH p, author,
-                    COUNT(DISTINCT tag) AS tags_count,
-                    COUNT(DISTINCT reply) AS replies_count,
-                    COUNT(DISTINCT repost) AS reposts_count,
-                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
-                ",
-            );
-
-            // Reset WHERE clause state for engagement filtering
-            builder.reset_where_clause();
-
-            // Add total_engagement to filter by engagement the post
-            if pagination.start.is_some() {
-                builder.add_condition("total_engagement <= $start");
-            }
-
-            if pagination.end.is_some() {
-                builder.add_condition("total_engagement >= $end");
-            }
-
-            "ORDER BY total_engagement DESC".to_string()
-        }
+        StreamSorting::Timeline => build_timeline_sorting(&mut builder, &pagination),
+        StreamSorting::TotalEngagement => build_engagement_sorting(&mut builder, &pagination),
     };
 
     // Final return statement
@@ -777,6 +730,50 @@ fn build_kind_filter(builder: &mut CypherQueryBuilder, kind: &Option<PubkyAppPos
 /// Filters to only include parent posts (not replies)
 fn build_parent_post_filter(builder: &mut CypherQueryBuilder) {
     builder.add_condition("NOT ( (p)-[:REPLIED]->(:Post) )");
+}
+
+/// Builds timeline sorting with time-based pagination
+fn build_timeline_sorting(builder: &mut CypherQueryBuilder, pagination: &Pagination) -> String {
+    if pagination.start.is_some() {
+        builder.add_condition("p.indexed_at <= $start");
+    }
+    if pagination.end.is_some() {
+        builder.add_condition("p.indexed_at >= $end");
+    }
+    "ORDER BY p.indexed_at DESC".to_string()
+}
+
+/// Builds engagement-based sorting with engagement score calculation
+fn build_engagement_sorting(builder: &mut CypherQueryBuilder, pagination: &Pagination) -> String {
+    // TODO: These optional matches could potentially be combined/collected to improve performance
+    builder.append(
+        "
+        // Count tags
+        OPTIONAL MATCH (p)<-[tag:TAGGED]-(:User)
+        // Count replies
+        OPTIONAL MATCH (p)<-[reply:REPLIED]-(:Post)
+        // Count reposts
+        OPTIONAL MATCH (p)<-[repost:REPOSTED]-(:Post)
+
+        WITH p, author,
+            COUNT(DISTINCT tag) AS tags_count,
+            COUNT(DISTINCT reply) AS replies_count,
+            COUNT(DISTINCT repost) AS reposts_count,
+            (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
+        ",
+    );
+
+    // Reset WHERE clause state for engagement filtering
+    builder.reset_where_clause();
+
+    if pagination.start.is_some() {
+        builder.add_condition("total_engagement <= $start");
+    }
+    if pagination.end.is_some() {
+        builder.add_condition("total_engagement >= $end");
+    }
+
+    "ORDER BY total_engagement DESC".to_string()
 }
 
 /// A builder for constructing Cypher queries with automatic WHERE/AND clause management
