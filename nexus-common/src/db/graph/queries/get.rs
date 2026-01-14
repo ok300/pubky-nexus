@@ -649,27 +649,9 @@ pub fn post_stream(
 ) -> Query {
     let mut builder = CypherQueryBuilder::new();
 
-    // Start with the observer node if needed
-    // Needed that one for source pattern matching
-    if source.get_observer().is_some() {
-        builder.append("MATCH (observer:User {id: $observer_id})\n");
-    }
-
-    // Base match for posts and authors
+    build_observer_match(&mut builder, &source);
     builder.append("MATCH (p:Post)<-[:AUTHORED]-(author:User)\n");
-
-    // Apply source MATCH clause
-    if let Some(query) = match source {
-        StreamSource::Following { .. } => Some("MATCH (observer)-[:FOLLOWS]->(author)\n"),
-        StreamSource::Followers { .. } => Some("MATCH (observer)<-[:FOLLOWS]-(author)\n"),
-        StreamSource::Friends { .. } => {
-            Some("MATCH (observer)-[:FOLLOWS]->(author)-[:FOLLOWS]->(observer)\n")
-        }
-        StreamSource::Bookmarks { .. } => Some("MATCH (observer)-[:BOOKMARKED]->(p)\n"),
-        _ => None,
-    } {
-        builder.append(query);
-    }
+    build_source_relationship(&mut builder, &source);
 
     // Apply tags
     if tags.is_some() {
@@ -761,6 +743,30 @@ pub fn post_stream(
 
     // Build the query and apply parameters using `param` method
     build_query_with_params(builder.query(), &source, tags, kind, &pagination)
+}
+
+/// Adds observer node match if needed for source pattern matching
+fn build_observer_match(builder: &mut CypherQueryBuilder, source: &StreamSource) {
+    if source.get_observer().is_some() {
+        builder.append("MATCH (observer:User {id: $observer_id})\n");
+    }
+}
+
+/// Builds the relationship pattern based on the stream source
+fn build_source_relationship(builder: &mut CypherQueryBuilder, source: &StreamSource) {
+    let relationship = match source {
+        StreamSource::Following { .. } => Some("MATCH (observer)-[:FOLLOWS]->(author)\n"),
+        StreamSource::Followers { .. } => Some("MATCH (observer)<-[:FOLLOWS]-(author)\n"),
+        StreamSource::Friends { .. } => {
+            Some("MATCH (observer)-[:FOLLOWS]->(author)-[:FOLLOWS]->(observer)\n")
+        }
+        StreamSource::Bookmarks { .. } => Some("MATCH (observer)-[:BOOKMARKED]->(p)\n"),
+        _ => None,
+    };
+
+    if let Some(clause) = relationship {
+        builder.append(clause);
+    }
 }
 
 /// A builder for constructing Cypher queries with automatic WHERE/AND clause management
