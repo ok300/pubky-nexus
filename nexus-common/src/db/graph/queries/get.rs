@@ -650,32 +650,16 @@ pub fn post_stream(
     // Initialize the query builder
     let mut builder = PostStreamQueryBuilder::new(source.clone(), sorting.clone(), pagination.clone(), kind);
 
-    // Build MATCH clauses
+    // Build MATCH clauses and filters
     builder
         .add_observer_match_if_needed()
         .add_base_match()
-        .add_source_match();
-
-    // Apply tags
-    if tags.is_some() {
-        builder.cypher.push_str("MATCH (User)-[tag:TAGGED]->(p)\n");
-        builder.append_condition("tag.label IN $labels");
-    }
-
-    // If source has an author, add where clause. It is related with source pattern matching
-    // If the source is Author, it is enough adding where clause. Not need to relate nodes
-    if builder.source.get_author().is_some() {
-        builder.append_condition("author.id = $author_id");
-    }
-
-    // If post kind is provided, add the corresponding condition
-    if builder.kind.is_some() {
-        builder.append_condition("p.kind = $kind");
-    }
-
-    // Filter just the parent posts: StreamSource:PostReplies and StreamSource:AuthorReplies do not reach that query
-    // so we do not need any condition to filter just parent nodes
-    builder.append_condition("NOT ( (p)-[:REPLIED]->(:Post) )");
+        .add_source_match()
+        .add_tags_match(tags)
+        .add_author_condition()
+        .add_kind_condition()
+        .add_parent_posts_filter()
+        .add_distinct_clause();
 
     // Apply time interval conditions. Only can be applied with timeline sorting
     // The engagament score has to be computed
@@ -688,9 +672,6 @@ pub fn post_stream(
             builder.append_condition("p.indexed_at >= $end");
         }
     }
-
-    // Make unique the posts, cannot be repeated
-    builder.cypher.push_str("WITH DISTINCT p, author\n");
 
     // Apply StreamSorting
     // Conditionally compute engagement counts only for TotalEngagement sorting
@@ -863,6 +844,38 @@ impl PostStreamQueryBuilder {
         if let Some(query) = source_match {
             self.cypher.push_str(query);
         }
+        self
+    }
+
+    fn add_tags_match(&mut self, tags: &Option<Vec<String>>) -> &mut Self {
+        if tags.is_some() {
+            self.cypher.push_str("MATCH (User)-[tag:TAGGED]->(p)\n");
+            self.append_condition("tag.label IN $labels");
+        }
+        self
+    }
+
+    fn add_author_condition(&mut self) -> &mut Self {
+        if self.source.get_author().is_some() {
+            self.append_condition("author.id = $author_id");
+        }
+        self
+    }
+
+    fn add_kind_condition(&mut self) -> &mut Self {
+        if self.kind.is_some() {
+            self.append_condition("p.kind = $kind");
+        }
+        self
+    }
+
+    fn add_parent_posts_filter(&mut self) -> &mut Self {
+        self.append_condition("NOT ( (p)-[:REPLIED]->(:Post) )");
+        self
+    }
+
+    fn add_distinct_clause(&mut self) -> &mut Self {
+        self.cypher.push_str("WITH DISTINCT p, author\n");
         self
     }
 
