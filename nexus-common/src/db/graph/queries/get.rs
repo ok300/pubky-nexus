@@ -664,20 +664,13 @@ pub fn post_stream(
         StreamSorting::TotalEngagement => build_engagement_sorting(&mut builder, &pagination),
     };
 
-    // Final return statement
+    // Build final return and pagination
     builder.append(&format!(
         "RETURN author.id AS author_id, p.id AS post_id, p.indexed_at AS indexed_at\n{order_clause}\n"
     ));
+    build_pagination(&mut builder, &pagination);
 
-    // Apply skip and limit
-    if let Some(skip) = pagination.skip {
-        builder.append(&format!("SKIP {skip}\n"));
-    }
-    if let Some(limit) = pagination.limit {
-        builder.append(&format!("LIMIT {limit}\n"));
-    }
-
-    // Build the query and apply parameters using `param` method
+    // Build the query with parameters
     build_query_with_params(builder.query(), &source, tags, kind, &pagination)
 }
 
@@ -776,6 +769,16 @@ fn build_engagement_sorting(builder: &mut CypherQueryBuilder, pagination: &Pagin
     "ORDER BY total_engagement DESC".to_string()
 }
 
+/// Adds skip and limit clauses for pagination
+fn build_pagination(builder: &mut CypherQueryBuilder, pagination: &Pagination) {
+    if let Some(skip) = pagination.skip {
+        builder.append(&format!("SKIP {skip}\n"));
+    }
+    if let Some(limit) = pagination.limit {
+        builder.append(&format!("LIMIT {limit}\n"));
+    }
+}
+
 /// A builder for constructing Cypher queries with automatic WHERE/AND clause management
 struct CypherQueryBuilder {
     query: String,
@@ -809,24 +812,6 @@ impl CypherQueryBuilder {
 
     fn query(&self) -> &str {
         &self.query
-    }
-}
-
-/// Appends a condition to the Cypher query, using `WHERE` if no `WHERE` clause
-/// has been applied yet, or `AND` if a `WHERE` clause is already present.
-///
-/// # Arguments
-///
-/// * `cypher` - A mutable reference to the Cypher query string to which the condition will be appended
-/// * `condition` - The condition to be added to the query
-/// * `where_clause_applied` - A mutable reference to a boolean flag indicating whether a `WHERE` clause
-///   has already been applied to the query.
-fn append_condition(cypher: &mut String, condition: &str, where_clause_applied: &mut bool) {
-    if *where_clause_applied {
-        cypher.push_str(&format!("AND {condition}\n"));
-    } else {
-        cypher.push_str(&format!("WHERE {condition}\n"));
-        *where_clause_applied = true;
     }
 }
 
