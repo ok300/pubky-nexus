@@ -8,7 +8,6 @@ use crate::models::{
 use crate::types::{DynError, Pagination, StreamSorting};
 use pubky_app_specs::PubkyAppPostKind;
 use serde::{Deserialize, Serialize};
-use tokio::task::spawn;
 use tokio::time::{timeout, Duration};
 use utoipa::ToSchema;
 
@@ -546,29 +545,16 @@ impl PostStream {
         viewer_id: Option<String>,
         post_keys: &[String],
     ) -> Result<Option<Self>, DynError> {
-        let viewer_id = viewer_id.map(|id| id.to_string());
-        let mut handles = Vec::with_capacity(post_keys.len());
+        // Use batch fetching to reduce N+1 queries
+        let post_views_result =
+            PostView::get_by_ids(post_keys, viewer_id.as_deref()).await?;
 
-        for post_key in post_keys {
-            let (author_id, post_id) = post_key.split_once(':').unwrap_or_default();
-            let author_id = author_id.to_string();
-            let viewer_id = viewer_id.clone();
-            let post_id = post_id.to_string();
-            let handle = spawn(async move {
-                PostView::get_by_id(&author_id, &post_id, viewer_id.as_deref(), None, None).await
-            });
-            handles.push(handle);
+        let post_views: Vec<PostView> = post_views_result.into_iter().flatten().collect();
+
+        match post_views.is_empty() {
+            true => Ok(None),
+            false => Ok(Some(Self(post_views))),
         }
-
-        let mut post_views = Vec::with_capacity(post_keys.len());
-
-        for handle in handles {
-            if let Some(post_view) = handle.await?? {
-                post_views.push(post_view);
-            }
-        }
-
-        Ok(Some(Self(post_views)))
     }
 
     /// Adds the post to a Redis sorted set using the `indexed_at` timestamp as the score.

@@ -27,7 +27,7 @@ mod parsed_uri_option {
     }
 }
 
-#[derive(Serialize, Deserialize, ToSchema, Default, Debug)]
+#[derive(Serialize, Deserialize, ToSchema, Default, Debug, Clone)]
 pub struct PostRelationships {
     /// If set, URI of the post this is a reply to
     #[schema(value_type = Option<String>)]
