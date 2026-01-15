@@ -477,9 +477,8 @@ impl PostStream {
         ))
     }
 
-    // Streams for followers / followings / friends are expensive.
-    // We are truncating to the first 200 user_ids. We could also random draw 200.
-    // TODO rethink, we could also fallback to graph
+    /// Fetch posts for multiple users using pipelined Redis queries (single round-trip).
+    /// Truncates to first 200 user_ids; TODO: consider random sampling or graph fallback.
     async fn get_posts_for_user_ids(
         user_ids: &[&str],
         order: SortOrder,
@@ -488,58 +487,31 @@ impl PostStream {
         skip: Option<usize>,
         limit: Option<usize>,
     ) -> Result<Vec<(String, f64)>, DynError> {
-        let mut post_keys = Vec::new();
-        // Limit the number of user IDs to process to the first 200
-        let max_user_ids = 200;
-        let truncated_user_ids: Vec<&str> = user_ids.iter().take(max_user_ids).cloned().collect();
-
-        // Retrieve posts for each user and collect them
-        for user_id in &truncated_user_ids {
-            let key_parts = [&POST_PER_USER_KEY_PARTS[..], &[user_id]].concat();
-            if let Some(post_ids) = Self::try_from_index_sorted_set(
-                &key_parts,
-                start,
-                end,
-                None, // We do not apply skip and limit here, as we need the full sorted set
-                None,
-                order.clone(),
-                None,
-            )
-            .await?
-            {
-                let user_post_keys: Vec<(f64, String)> = post_ids
-                    .into_iter()
-                    .map(|(post_id, score)| (score, format!("{user_id}:{post_id}")))
-                    .collect();
-                post_keys.extend(user_post_keys);
-            }
-        }
-
-        // The selected user_ids does not have any post
-        if post_keys.is_empty() {
+        let user_ids: Vec<&str> = user_ids.iter().take(200).cloned().collect();
+        if user_ids.is_empty() {
             return Ok(Vec::new());
         }
 
-        // Sort all the collected posts globally by their score (descending)
-        post_keys.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        let results = Self::try_from_index_multiple_sorted_sets(
+            &user_ids, &POST_PER_USER_KEY_PARTS, start, end, None, None, order,
+        ).await?;
 
-        // Apply global skip and limit after sorting
-        let start_index = skip.unwrap_or(0).clamp(0, post_keys.len());
-        let end_index = limit
-            .map(|l| (start_index + l).min(post_keys.len()))
-            .unwrap_or(post_keys.len());
-
-        // Ensure valid slice range
-        if start_index >= end_index {
-            return Ok(Vec::new());
-        }
-
-        let selected_post_keys = post_keys[start_index..end_index]
-            .iter()
-            .map(|(score, post_key)| (post_key.clone(), *score))
+        // Collect and sort all posts by score descending
+        let mut posts: Vec<_> = user_ids.iter().zip(results)
+            .flat_map(|(uid, res)| {
+                res.into_iter().flatten()
+                    .map(move |(post_id, score)| (score, format!("{uid}:{post_id}")))
+            })
             .collect();
+        posts.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
-        Ok(selected_post_keys)
+        // Apply skip/limit and swap to (key, score) format
+        let skip = skip.unwrap_or(0);
+        Ok(posts.into_iter()
+            .skip(skip)
+            .take(limit.unwrap_or(usize::MAX))
+            .map(|(score, key)| (key, score))
+            .collect())
     }
 
     pub async fn from_listed_post_ids(

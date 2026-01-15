@@ -225,6 +225,55 @@ pub async fn _remove(prefix: &str, key: &str, items: &[&str]) -> Result<(), DynE
     Ok(())
 }
 
+/// Retrieves ranges of elements from multiple Redis sorted sets using a pipeline.
+pub async fn get_multiple_ranges(
+    prefix: &str,
+    keys: &[&str],
+    min_score: Option<f64>,
+    max_score: Option<f64>,
+    skip: Option<usize>,
+    limit: Option<usize>,
+    sorting: SortOrder,
+) -> Result<Vec<Option<Vec<(String, f64)>>>, DynError> {
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut redis_conn = get_redis_conn().await?;
+    let (min, max) = (min_score.unwrap_or(f64::MIN), max_score.unwrap_or(f64::MAX));
+    let (skip, limit) = (skip.unwrap_or(0) as isize, limit.unwrap_or(1000) as isize);
+
+    let mut pipe = redis::pipe();
+    for key in keys {
+        let index_key = format!("{prefix}:{key}");
+        let (cmd, lo, hi) = match sorting {
+            SortOrder::Ascending => ("ZRANGEBYSCORE", min, max),
+            SortOrder::Descending => ("ZREVRANGEBYSCORE", max, min),
+        };
+        pipe.cmd(cmd)
+            .arg(&index_key)
+            .arg(lo)
+            .arg(hi)
+            .arg("WITHSCORES")
+            .arg("LIMIT")
+            .arg(skip)
+            .arg(limit);
+    }
+
+    let results: Vec<Vec<String>> = pipe.query_async(&mut redis_conn).await?;
+
+    Ok(results
+        .into_iter()
+        .map(|flat| {
+            let entries: Vec<_> = flat
+                .chunks_exact(2)
+                .filter_map(|pair| pair[1].parse().ok().map(|s| (pair[0].clone(), s)))
+                .collect();
+            (!entries.is_empty()).then_some(entries)
+        })
+        .collect())
+}
+
 /// Removes elements from a Redis sorted set.
 ///
 /// This function removes the specified elements from the Redis sorted set identified by the `prefix` and `key`.

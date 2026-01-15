@@ -659,6 +659,25 @@ pub trait RedisOps: Serialize + DeserializeOwned + Send + Sync {
         sorted_sets::get_range(prefix, &key, end, start, skip, limit, sorting).await
     }
 
+    /// Retrieves ranges from multiple Redis sorted sets using a pipeline (single round-trip).
+    async fn try_from_index_multiple_sorted_sets(
+        key_parts_list: &[&str],
+        common_key_parts: &[&str],
+        start: Option<f64>,
+        end: Option<f64>,
+        skip: Option<usize>,
+        limit: Option<usize>,
+        sorting: SortOrder,
+    ) -> Result<Vec<Option<Vec<(String, f64)>>>, DynError> {
+        let prefix = common_key_parts.join(":");
+        let keys: Vec<String> = key_parts_list
+            .iter()
+            .map(|k| if prefix.is_empty() { k.to_string() } else { format!("{prefix}:{k}") })
+            .collect();
+        let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
+        sorted_sets::get_multiple_ranges(SORTED_PREFIX, &key_refs, end, start, skip, limit, sorting).await
+    }
+
     /// Retrieves a lexicographical range of elements from a Redis sorted set using the provided key parts.
     ///
     /// This method fetches elements from a Redis sorted set stored under the key generated from the provided `key_parts`.
