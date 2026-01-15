@@ -65,12 +65,35 @@ impl UserView {
         depth: Option<u8>,
     ) -> Result<Vec<Option<Self>>, DynError> {
         // Use mget to fetch all user details and counts in bulk
-        let (details_list, counts_list): (Vec<Option<UserDetails>>, Vec<Option<UserCounts>>) =
-            tokio::try_join!(UserDetails::mget(user_ids), UserCounts::mget(user_ids))?;
+        let (details_list, counts_list, mut relationships) = tokio::try_join!(
+            UserDetails::mget(user_ids),
+            UserCounts::mget(user_ids),
+            Relationship::get_by_ids(user_ids, viewer_id),
+        )?;
+
+        let mut tag_lookup_indices = Vec::new();
+        let mut tag_user_ids = Vec::new();
+        for (i, counts) in counts_list.iter().enumerate() {
+            let counts = counts.clone().unwrap_or_default();
+            if counts.tags > 0 {
+                tag_lookup_indices.push(i);
+                tag_user_ids.push(user_ids[i].clone());
+            }
+        }
+
+        let mut tags_by_index = vec![None; user_ids.len()];
+        if !tag_user_ids.is_empty() {
+            let tags_list =
+                TagUser::get_by_ids(&tag_user_ids, None, None, None, None, viewer_id, depth)
+                    .await?;
+            for (index, tags) in tag_lookup_indices.iter().zip(tags_list.into_iter()) {
+                tags_by_index[*index] = Some(tags.unwrap_or_default());
+            }
+        }
 
         let mut user_views = Vec::with_capacity(user_ids.len());
 
-        for (i, user_id) in user_ids.iter().enumerate() {
+        for (i, _user_id) in user_ids.iter().enumerate() {
             let details = &details_list[i];
             let counts = &counts_list[i];
 
@@ -80,17 +103,8 @@ impl UserView {
             };
 
             let counts = counts.clone().unwrap_or_default();
-            let relationship = Relationship::get_by_id(user_id, viewer_id)
-                .await?
-                .unwrap_or_default();
-
-            // Before fetching post tags, check if the post has any tags
-            let tags = match counts.tags {
-                0 => Vec::new(),
-                _ => TagUser::get_by_id(user_id, None, None, None, None, viewer_id, depth)
-                    .await?
-                    .unwrap_or_default(),
-            };
+            let relationship = relationships[i].take().unwrap_or_default();
+            let tags = tags_by_index[i].take().unwrap_or_default();
 
             user_views.push(Some(Self {
                 details: details.clone(),

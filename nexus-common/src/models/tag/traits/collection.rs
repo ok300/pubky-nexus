@@ -11,7 +11,7 @@ use crate::models::tag::{post::POST_TAGS_KEY_PARTS, user::USER_TAGS_KEY_PARTS};
 
 use crate::models::tag::TagDetails;
 
-const CACHE_SORTED_SET_PREFIX: &str = "Cache:Sorted";
+pub const CACHE_SORTED_SET_PREFIX: &str = "Cache:Sorted";
 pub const CACHE_SET_PREFIX: &str = "Cache";
 // TTL, 3HR
 const CACHE_TTL: i64 = 3 * 60 * 60;
