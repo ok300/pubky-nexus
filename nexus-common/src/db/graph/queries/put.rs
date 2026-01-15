@@ -32,43 +32,40 @@ pub fn create_post(
     post: &PostDetails,
     post_relationships: &PostRelationships,
 ) -> Result<Query, DynError> {
-    let mut cypher = String::new();
-    let mut new_relationships = Vec::new();
+    let mut match_clauses = Vec::new();
+    let mut merge_clauses = Vec::new();
 
-    // Check if all the dependencies are consistent in the graph
     if post_relationships.replied.is_some() {
-        cypher.push_str("
-            MATCH (reply_parent_author:User {id: $reply_parent_author_id})-[:AUTHORED]->(reply_parent_post:Post {id: $reply_parent_post_id})
-        ");
-        new_relationships.push("MERGE (new_post)-[:REPLIED]->(reply_parent_post)");
-    };
-    if post_relationships.reposted.is_some() {
-        cypher.push_str("
-            MATCH (repost_parent_author:User {id: $repost_parent_author_id})-[:AUTHORED]->(repost_parent_post:Post {id: $repost_parent_post_id})
-        ");
-        new_relationships.push("MERGE (new_post)-[:REPOSTED]->(repost_parent_post)");
+        match_clauses.push("MATCH (reply_parent_author:User {id: $reply_parent_author_id})-[:AUTHORED]->(reply_parent_post:Post {id: $reply_parent_post_id})");
+        merge_clauses.push("MERGE (new_post)-[:REPLIED]->(reply_parent_post)");
     }
-    // Create the new post
-    cypher.push_str(
-        "
-        MATCH (author:User {id: $author_id})
-        OPTIONAL MATCH (u)-[:AUTHORED]->(existing_post:Post {id: $post_id})
-        MERGE (author)-[:AUTHORED]->(new_post:Post {id: $post_id})
-    ",
-    );
+    if post_relationships.reposted.is_some() {
+        match_clauses.push("MATCH (repost_parent_author:User {id: $repost_parent_author_id})-[:AUTHORED]->(repost_parent_post:Post {id: $repost_parent_post_id})");
+        merge_clauses.push("MERGE (new_post)-[:REPOSTED]->(repost_parent_post)");
+    }
 
-    // Add relationships to the query
-    cypher.push_str(&new_relationships.join("\n"));
-
-    cypher.push_str(
+    let cypher = format!(
         "
+        {match_clauses}
+        // Find the author of the post
+        MATCH (author:User {{id: $author_id}})
+        // Check if the post already exists
+        OPTIONAL MATCH (u)-[:AUTHORED]->(existing_post:Post {{id: $post_id}})
+        // Merge the post, creating it if it doesn't exist
+        MERGE (author)-[:AUTHORED]->(new_post:Post {{id: $post_id}})
+        {merge_clauses}
         // Set indexed_at only on creation
         ON CREATE SET
             new_post.indexed_at = $indexed_at
+        // Update post properties
         SET new_post.content = $content,
             new_post.kind = $kind,
             new_post.attachments = $attachments
-        RETURN existing_post IS NOT NULL AS flag",
+        // Return a flag indicating whether the post was created or updated
+        RETURN existing_post IS NOT NULL AS flag
+        ",
+        match_clauses = match_clauses.join("\n"),
+        merge_clauses = merge_clauses.join("\n")
     );
 
     let kind = serde_json::to_string(&post.kind)?;
