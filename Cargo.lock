@@ -2972,6 +2972,7 @@ dependencies = [
  "chrono",
  "deadpool-redis",
  "dirs",
+ "futures",
  "neo4rs",
  "opentelemetry 0.31.0",
  "opentelemetry-appender-tracing",

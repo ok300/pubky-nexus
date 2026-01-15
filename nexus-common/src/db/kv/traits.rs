@@ -400,6 +400,30 @@ pub trait RedisOps: Serialize + DeserializeOwned + Send + Sync {
         sets::check_member(&prefix, &key, member).await
     }
 
+    /// Checks multiple set memberships in a single Redis pipeline call.
+    ///
+    /// This method efficiently checks whether each member exists in its corresponding set
+    /// using a Redis pipeline for batch operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `checks` - A slice of tuples where each tuple contains:
+    ///   - `key`: The key identifying the set
+    ///   - `member`: The member to check for existence in that set
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Vec<bool>` where each element indicates whether the corresponding
+    /// member exists in its set. If a set doesn't exist, returns `false` for that check.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Redis connection or pipeline execution fails.
+    async fn check_set_members_batch(checks: &[(&str, &str)]) -> Result<Vec<bool>, DynError> {
+        let prefix = Self::prefix().await;
+        sets::check_members_batch(&prefix, checks).await
+    }
+
     /// Retrieves the size of a Redis set using the provided key parts.
     ///
     /// This method retrieves the number of elements in a Redis set stored under the key generated from the provided `key_parts`.
