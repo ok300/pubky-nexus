@@ -3,9 +3,19 @@ use crate::{Error, Result};
 use axum::extract::{Path, Query};
 use axum::Json;
 use nexus_common::models::user::Muted;
-use nexus_common::types::Pagination;
+use serde::Deserialize;
 use tracing::debug;
-use utoipa::OpenApi;
+use utoipa::{IntoParams, OpenApi, ToSchema};
+
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct UserMutedQuery {
+    /// Skip N muted users
+    skip: Option<usize>,
+
+    /// Retrieve N muted users
+    limit: Option<usize>,
+}
 
 #[utoipa::path(
     get,
@@ -14,8 +24,7 @@ use utoipa::OpenApi;
     tag = "User",
     params(
         ("user_id" = String, Path, description = "User Pubky ID"),
-        ("skip" = Option<usize>, Query, description = "Skip N muted users"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N muted users")
+        UserMutedQuery
     ),
     responses(
         (status = 200, description = "User muted list", body = Muted),
@@ -25,7 +34,7 @@ use utoipa::OpenApi;
 )]
 pub async fn user_muted_handler(
     Path(user_id): Path<String>,
-    Query(query): Query<Pagination>,
+    Query(query): Query<UserMutedQuery>,
 ) -> Result<Json<Muted>> {
     debug!("GET {USER_MUTED_ROUTE} user_id:{}", user_id);
 
@@ -40,5 +49,5 @@ pub async fn user_muted_handler(
 }
 
 #[derive(OpenApi)]
-#[openapi(paths(user_muted_handler), components(schemas(Muted)))]
+#[openapi(paths(user_muted_handler), components(schemas(Muted, UserMutedQuery)))]
 pub struct UserMutedApiDoc;

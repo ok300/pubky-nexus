@@ -7,27 +7,68 @@ use nexus_common::models::tag::stream::{HotTag, HotTags};
 use nexus_common::models::tag::TaggedType;
 use nexus_common::models::tag::Taggers as TaggersType;
 use nexus_common::types::routes::HotTagsInputDTO;
-use nexus_common::types::{Pagination, StreamReach, Timeframe};
+use nexus_common::types::{StreamReach, Timeframe};
 use serde::Deserialize;
 use tracing::{debug, error};
-use utoipa::OpenApi;
+use utoipa::{IntoParams, OpenApi, ToSchema};
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct HotTagsQuery {
+    /// User Pubky ID
     user_id: Option<String>,
+
+    /// Reach type: `follower` | `following` | `friends` | `wot`. To apply that, user_id is required
     reach: Option<StreamReach>,
+
+    /// Retrieve N user_id for each tag
+    #[param(default = 20, maximum = 20)]
     taggers_limit: Option<usize>,
+
+    /// Retrieve hot tags for this specific timeframe
+    #[param(default = "all_time")]
     timeframe: Option<Timeframe>,
-    #[serde(flatten)]
-    pagination: Pagination,
+
+    /// Skip N tags
+    #[param(default = 0)]
+    skip: Option<usize>,
+
+    /// Retrieve N tag
+    #[param(default = 40, maximum = 40)]
+    limit: Option<usize>,
+
+    /// The start of the stream timeframe
+    start: Option<f64>,
+
+    /// The end of the stream timeframe
+    end: Option<f64>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct TagTaggersQuery {
-    #[serde(flatten)]
-    pagination: Pagination,
+    /// Skip N taggers
+    #[param(default = 0)]
+    skip: Option<usize>,
+
+    /// Retrieve N taggers
+    #[param(default = 20, maximum = 20)]
+    limit: Option<usize>,
+
+    /// The start of the stream timeframe
+    start: Option<f64>,
+
+    /// The end of the stream timeframe
+    end: Option<f64>,
+
+    /// User ID to base reach on
     user_id: Option<String>,
+
+    /// Reach type: `follower` | `following` | `friends` | `wot`. To apply that, user_id is required
     reach: Option<StreamReach>,
+
+    /// Retrieve taggers for this specific timeframe (not applied for reach)
+    #[param(default = "all_time")]
     timeframe: Option<Timeframe>,
 }
 
@@ -38,11 +79,7 @@ pub struct TagTaggersQuery {
     tag = "Tags",
     params(
         ("label" = String, Path, description = "Tag name"),
-        ("reach" = Option<StreamReach>, Query, description = "Reach type: `follower` | `following` | `friends` | `wot`. To apply that, user_id is required"),
-        ("user_id" = Option<String>, Query, description = "User ID to base reach on"),
-        ("skip" = Option<usize>, Query, description = "Skip N taggers. Defaults to `0`"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N tagggers. Defaults to `20`"),
-        ("timeframe" = Option<Timeframe>, Query, description = "Retrieve taggers for this specific timeframe (not applied for reach). Defaults to `all_time`"),
+        TagTaggersQuery
     ),
     responses(
         (status = 200, description = "Taggers", body = TaggersType),
@@ -65,8 +102,8 @@ pub async fn tag_taggers_handler(
         });
     }
 
-    let skip = query.pagination.skip.unwrap_or(0);
-    let limit = query.pagination.limit.unwrap_or(20).min(20);
+    let skip = query.skip.unwrap_or(0);
+    let limit = query.limit.unwrap_or(20).min(20);
     let timeframe = query.timeframe.unwrap_or(Timeframe::AllTime);
 
     match Taggers::get_global_taggers(
@@ -91,12 +128,7 @@ pub async fn tag_taggers_handler(
     description = "Global Tags by reach",
     tag = "Tags",
     params(
-        ("user_id" = Option<String>, Query, description = "User Pubky ID"),
-        ("reach" = Option<StreamReach>, Query, description = "Reach type: `follower` | `following` | `friends` | `wot`. To apply that, user_id is required"),
-        ("taggers_limit" = Option<usize>, Query, description = "Retrieve N user_id for each tag. Defaults to `20`"),
-        ("skip" = Option<usize>, Query, description = "Skip N tags. Defaults to `0`"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N tag. Defaults to `40`"),
-        ("timeframe" = Option<Timeframe>, Query, description = "Retrieve hot tags for this specific timeframe. Defaults to `all_time`"),
+        HotTagsQuery
     ),
     responses(
         (status = 200, description = "Retrieve tags by reach cluster", body = Vec<HotTag>),
@@ -113,8 +145,8 @@ pub async fn hot_tags_handler(Query(query): Query<HotTagsQuery>) -> Result<Json<
         });
     }
 
-    let skip = query.pagination.skip.unwrap_or(0);
-    let limit = query.pagination.limit.unwrap_or(40).min(40);
+    let skip = query.skip.unwrap_or(0);
+    let limit = query.limit.unwrap_or(40).min(40);
     let taggers_limit = query.taggers_limit.unwrap_or(20).min(20);
     let timeframe = query.timeframe.unwrap_or(Timeframe::AllTime);
 
@@ -139,6 +171,6 @@ pub async fn hot_tags_handler(Query(query): Query<HotTagsQuery>) -> Result<Json<
 #[derive(OpenApi)]
 #[openapi(
     paths(hot_tags_handler, tag_taggers_handler),
-    components(schemas(HotTags, HotTag, Taggers, StreamReach, Timeframe))
+    components(schemas(HotTags, HotTag, Taggers, StreamReach, Timeframe, HotTagsQuery, TagTaggersQuery))
 )]
 pub struct TagGlobalApiDoc;

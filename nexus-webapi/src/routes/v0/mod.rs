@@ -14,7 +14,7 @@ pub mod tag;
 mod types;
 pub mod user;
 
-pub use types::{TaggersInfoResponse, TagsQuery};
+pub use types::TaggersInfoResponse;
 
 use super::AppState;
 

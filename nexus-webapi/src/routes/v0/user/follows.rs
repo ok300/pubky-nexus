@@ -5,9 +5,19 @@ use crate::{Error, Result};
 use axum::extract::{Path, Query};
 use axum::Json;
 use nexus_common::models::follow::{Followers, Following, Friends, UserFollows};
-use nexus_common::types::Pagination;
+use serde::Deserialize;
 use tracing::debug;
-use utoipa::OpenApi;
+use utoipa::{IntoParams, OpenApi, ToSchema};
+
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct UserFollowsQuery {
+    /// Skip N items
+    skip: Option<usize>,
+
+    /// Retrieve N items
+    limit: Option<usize>,
+}
 
 #[utoipa::path(
     get,
@@ -16,8 +26,7 @@ use utoipa::OpenApi;
     tag = "User",
     params(
         ("user_id" = String, Path, description = "User Pubky ID"),
-        ("skip" = Option<usize>, Query, description = "Skip N followers"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N followers")
+        UserFollowsQuery
     ),
     responses(
         (status = 200, description = "User followers list", body = Followers),
@@ -27,7 +36,7 @@ use utoipa::OpenApi;
 )]
 pub async fn user_followers_handler(
     Path(user_id): Path<String>,
-    Query(query): Query<Pagination>,
+    Query(query): Query<UserFollowsQuery>,
 ) -> Result<Json<Followers>> {
     debug!("GET {USER_FOLLOWERS_ROUTE} user_id:{}", user_id);
 
@@ -48,8 +57,7 @@ pub async fn user_followers_handler(
     tag = "User",
     params(
         ("user_id" = String, Path, description = "User Pubky ID"),
-        ("skip" = Option<usize>, Query, description = "Skip N following"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N following")
+        UserFollowsQuery
     ),
     responses(
         (status = 200, description = "User following list", body = Following),
@@ -59,7 +67,7 @@ pub async fn user_followers_handler(
 )]
 pub async fn user_following_handler(
     Path(user_id): Path<String>,
-    Query(query): Query<Pagination>,
+    Query(query): Query<UserFollowsQuery>,
 ) -> Result<Json<Following>> {
     debug!("GET {USER_FOLLOWING_ROUTE} user_id:{}", user_id);
 
@@ -80,8 +88,7 @@ pub async fn user_following_handler(
     tag = "User",
     params(
         ("user_id" = String, Path, description = "User Pubky ID"),
-        ("skip" = Option<usize>, Query, description = "Skip N friends"),
-        ("limit" = Option<usize>, Query, description = "Retrieve N friends")
+        UserFollowsQuery
     ),
     responses(
         (status = 200, description = "User friends list", body = Friends),
@@ -91,7 +98,7 @@ pub async fn user_following_handler(
 )]
 pub async fn user_friends_handler(
     Path(user_id): Path<String>,
-    Query(query): Query<Pagination>,
+    Query(query): Query<UserFollowsQuery>,
 ) -> Result<Json<Friends>> {
     debug!("GET {USER_FRIENDS_ROUTE} user_id:{}", user_id);
 
@@ -108,6 +115,6 @@ pub async fn user_friends_handler(
 #[derive(OpenApi)]
 #[openapi(
     paths(user_followers_handler, user_following_handler, user_friends_handler),
-    components(schemas(Followers, Following, Friends))
+    components(schemas(Followers, Following, Friends, UserFollowsQuery))
 )]
 pub struct UserFollowsApiDoc;

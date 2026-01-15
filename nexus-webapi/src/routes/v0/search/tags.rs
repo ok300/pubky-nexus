@@ -4,17 +4,20 @@ use axum::extract::{Path, Query};
 use axum::Json;
 use nexus_common::models::post::search::PostsByTagSearch;
 use nexus_common::models::tag::search::TagSearch;
-use nexus_common::types::Pagination;
 use pubky_app_specs::traits::Validatable;
 use pubky_app_specs::PubkyAppTag;
 use serde::Deserialize;
 use tracing::debug;
-use utoipa::OpenApi;
+use utoipa::{IntoParams, OpenApi, ToSchema};
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct SearchTagsQuery {
-    #[serde(flatten)]
-    pub pagination: Pagination,
+    /// Skip N results
+    pub skip: Option<usize>,
+
+    /// Limit the number of results
+    pub limit: Option<usize>,
 }
 
 #[utoipa::path(
@@ -24,8 +27,7 @@ pub struct SearchTagsQuery {
     tag = "Search",
     params(
         ("prefix" = String, Path, description = "Tag name prefix"),
-        ("skip" = Option<usize>, Query, description = "Skip N results"),
-        ("limit" = Option<usize>, Query, description = "Limit the number of results")
+        SearchTagsQuery
     ),
     responses(
         (status = 200, description = "Search results", body = Vec<String>),
@@ -38,13 +40,19 @@ pub async fn search_tags_by_prefix_handler(
 ) -> Result<Json<Vec<TagSearch>>> {
     let validated_prefix = sanitize_validate(&prefix)?;
 
-    let mut pagination = query.pagination;
-    pagination.skip.get_or_insert_default();
-    pagination.limit.get_or_insert(20);
+    let skip = query.skip.unwrap_or(0);
+    let limit = query.limit.unwrap_or(20);
+
+    let pagination = nexus_common::types::Pagination {
+        skip: Some(skip),
+        limit: Some(limit),
+        start: None,
+        end: None,
+    };
 
     debug!(
         "GET {SEARCH_TAGS_BY_PREFIX_ROUTE} validated_prefix:{}, skip: {:?}, limit: {:?}",
-        validated_prefix, pagination.skip, pagination.limit
+        validated_prefix, skip, limit
     );
 
     match TagSearch::get_by_label(&validated_prefix, &pagination).await {
@@ -72,6 +80,6 @@ fn sanitize_validate(tag_prefix: &str) -> Result<String> {
 #[derive(OpenApi)]
 #[openapi(
     paths(search_tags_by_prefix_handler),
-    components(schemas(PostsByTagSearch))
+    components(schemas(PostsByTagSearch, SearchTagsQuery))
 )]
 pub struct SearchTagsByPrefixApiDocs;
