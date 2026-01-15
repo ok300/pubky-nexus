@@ -32,7 +32,7 @@ pub async fn post_counts_handler(
     match PostCounts::get_by_id(&author_id, &post_id).await {
         Ok(Some(post)) => Ok(Json(post)),
         Ok(None) => Err(Error::PostNotFound { author_id, post_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

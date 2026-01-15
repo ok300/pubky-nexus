@@ -1,5 +1,5 @@
 use crate::routes::v0::endpoints::SEARCH_POSTS_BY_TAG_ROUTE;
-use crate::{Error, Result};
+use crate::Result;
 use axum::extract::{Path, Query};
 use axum::Json;
 use nexus_common::models::post::search::PostsByTagSearch;
@@ -56,7 +56,7 @@ pub async fn search_posts_by_tag_handler(
     match PostsByTagSearch::get_by_label(&tag, sorting, pagination).await {
         Ok(Some(posts_list)) => Ok(Json(posts_list)),
         Ok(None) => Ok(Json(vec![])),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

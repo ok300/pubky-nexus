@@ -81,7 +81,7 @@ pub async fn tag_taggers_handler(
     {
         Ok(Some(post)) => Ok(Json(post)),
         Ok(None) => Ok(Json(vec![])),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -131,7 +131,7 @@ pub async fn hot_tags_handler(Query(query): Query<HotTagsQuery>) -> Result<Json<
         Ok(None) => Ok(Json(HotTags::default())),
         Err(source) => {
             error!("Internal Server ERROR: {:?}", source);
-            Err(Error::InternalServerError { source })
+            Err(source.into())
         }
     }
 }

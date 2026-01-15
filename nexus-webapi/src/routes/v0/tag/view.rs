@@ -29,7 +29,7 @@ pub async fn tag_view_handler(
     match TagView::get_by_tagger_and_id(&tagger_id, &tag_id).await {
         Ok(Some(tag)) => Ok(Json(tag)),
         Ok(None) => Err(Error::TagNotFound { tag_id, tagger_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

@@ -48,7 +48,7 @@ pub async fn search_users_by_name_handler(
     match UserSearch::get_by_name(&username, Some(skip), Some(limit)).await {
         Ok(Some(user_search)) => Ok(Json(user_search)),
         Ok(None) => Ok(Json(UserSearch::default())),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -87,7 +87,7 @@ pub async fn search_users_by_id_handler(
     match UserSearch::get_by_id(&id_prefix, Some(skip), Some(limit)).await {
         Ok(Some(user_search)) => Ok(Json(user_search)),
         Ok(None) => Ok(Json(UserSearch::default())),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

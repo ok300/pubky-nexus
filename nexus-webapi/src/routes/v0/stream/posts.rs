@@ -130,7 +130,7 @@ pub async fn stream_posts_handler(
     {
         Ok(Some(stream)) => Ok(Json(stream)),
         Ok(None) => Ok(Json(PostStream::default())),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -187,7 +187,7 @@ pub async fn stream_post_keys_handler(
     {
         Ok(Some(stream)) => Ok(Json(stream)),
         Ok(None) => Ok(Json(PostKeyStream::default())),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -237,7 +237,7 @@ pub async fn stream_posts_by_ids_handler(
     match PostStream::from_listed_post_ids(request.viewer_id, &request.post_ids).await {
         Ok(Some(stream)) => Ok(Json(stream)),
         Ok(None) => Ok(Json(PostStream::default())),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

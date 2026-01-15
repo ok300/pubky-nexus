@@ -32,7 +32,7 @@ pub async fn user_relationship_handler(
     match Relationship::get_by_id(&user_id, Some(&viewer_id)).await {
         Ok(Some(relationship)) => Ok(Json(relationship)),
         Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

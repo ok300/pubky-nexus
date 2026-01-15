@@ -35,7 +35,7 @@ pub async fn user_muted_handler(
     match Muted::get_by_id(&user_id, Some(skip), Some(limit)).await {
         Ok(Some(muted)) => Ok(Json(muted)),
         Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

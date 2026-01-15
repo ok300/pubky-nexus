@@ -26,7 +26,7 @@ pub async fn user_counts_handler(Path(user_id): Path<String>) -> Result<Json<Use
     match UserCounts::get_by_id(&user_id).await {
         Ok(Some(counts)) => Ok(Json(counts)),
         Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

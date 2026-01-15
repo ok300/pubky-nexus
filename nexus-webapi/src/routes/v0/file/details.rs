@@ -39,7 +39,7 @@ pub async fn file_details_handler(Path(file_uri): Path<String>) -> Result<Json<F
                 Some(value) => Ok(Json(value.clone())),
             }
         }
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

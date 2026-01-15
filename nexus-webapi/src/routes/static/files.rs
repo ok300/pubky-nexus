@@ -77,12 +77,11 @@ pub async fn static_files_handler(
         vec![vec![owner_id.as_str(), file_id.as_str()].as_slice()].as_slice(),
     )
     .await
-    .map_err(|err| {
+    .inspect_err(|_| {
         error!(
             "Error while fetching file details for user: {} and file: {}",
             owner_id, file_id
         );
-        Error::InternalServerError { source: err }
     })?;
 
     if files.is_empty() {
@@ -105,12 +104,11 @@ pub async fn static_files_handler(
 
     let file_variant_content_type = Blob::get_by_id(&file, &variant, file_path.clone())
         .await
-        .map_err(|err| {
+        .inspect_err(|_| {
             error!(
                 "Error while processing file variant for variant: {} and file: {}",
                 variant, file_id
             );
-            Error::InternalServerError { source: err }
         })?;
 
     let request_uri = request.uri().clone();
@@ -129,9 +127,7 @@ pub async fn static_files_handler(
     // Set a new Cache-Control header to cache the file for 3600 seconds (1 hour)
     let cache_control_header = "public, max-age=3600".parse().map_err(|err| {
         error!("Failed to parse Cache-Control header value: {}", err);
-        Error::InternalServerError {
-            source: Box::new(err),
-        }
+        Error::from(Box::new(err) as Box<dyn std::error::Error + Send + Sync>)
     })?;
 
     // Insert our newly parsed Cache-Control header.
@@ -145,9 +141,7 @@ pub async fn static_files_handler(
             .parse()
             .map_err(|err| {
                 error!("Invalid content disposition header: {}", file.name);
-                Error::InternalServerError {
-                    source: Box::new(err),
-                }
+                Error::from(Box::new(err) as Box<dyn std::error::Error + Send + Sync>)
             })?;
         response
             .headers_mut()

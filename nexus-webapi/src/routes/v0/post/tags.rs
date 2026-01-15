@@ -50,7 +50,7 @@ pub async fn post_tags_handler(
     {
         Ok(Some(tags)) => Ok(Json(tags)),
         Ok(None) => Err(Error::PostNotFound { author_id, post_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -91,7 +91,7 @@ pub async fn post_taggers_handler(
     .await
     {
         Ok(tags) => Ok(Json(TaggersInfoResponse::from(tags))),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

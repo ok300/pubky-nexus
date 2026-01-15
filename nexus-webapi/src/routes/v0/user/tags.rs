@@ -52,7 +52,7 @@ pub async fn user_tags_handler(
     {
         Ok(Some(tags)) => Ok(Json(tags)),
         Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -105,7 +105,7 @@ pub async fn user_taggers_handler(
     .await
     {
         Ok(tags) => Ok(Json(TaggersInfoResponse::from(tags))),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

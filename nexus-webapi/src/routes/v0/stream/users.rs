@@ -70,7 +70,7 @@ pub async fn stream_users_handler(
     match UserStream::get_by_id(input, viewer_id, depth).await {
         Ok(Some(stream)) => Ok(Json(stream)),
         Ok(None) => Ok(Json(UserStream::default())),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -121,7 +121,7 @@ pub async fn stream_user_ids_handler(
             Ok(Json(stream))
         }
         Ok(None) => Ok(Json(UserIdStream::default())),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -178,7 +178,7 @@ pub async fn stream_username_search_handler(
     {
         Ok(Some(stream)) => Ok(Json(stream)),
         Ok(None) => Ok(Json(UserStream::default())),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -239,7 +239,7 @@ pub async fn stream_users_by_ids_handler(
     {
         Ok(Some(stream)) => Ok(Json(stream)),
         Ok(None) => Ok(Json(UserStream::default())),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

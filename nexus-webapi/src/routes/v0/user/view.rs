@@ -42,7 +42,7 @@ pub async fn user_view_handler(
     match UserView::get_by_id(&user_id, query.viewer_id.as_deref(), query.depth).await {
         Ok(Some(user)) => Ok(Json(user)),
         Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

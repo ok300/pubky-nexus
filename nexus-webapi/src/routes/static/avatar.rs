@@ -38,10 +38,7 @@ pub async fn user_avatar_handler(
     let file_path: &PathBuf = &app_state.files_path;
 
     // 1. Get user details
-    let details = match UserDetails::get_by_id(&user_id)
-        .await
-        .map_err(|source| Error::InternalServerError { source })?
-    {
+    let details = match UserDetails::get_by_id(&user_id).await? {
         None => return Err(Error::UserNotFound { user_id }),
         Some(d) => d,
     };
@@ -54,16 +51,17 @@ pub async fn user_avatar_handler(
     // 3. Parse user_id + file_id from the "pubky://owner_id/file_id" style URI
     let keys = FileDetails::file_key_from_uri(&image_uri);
     if keys.len() != 2 {
-        return Err(Error::InternalServerError {
-            source: format!("Invalid file URI: {image_uri}").into(),
-        });
+        return Err(Error::from(
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid file URI: {image_uri}"),
+            )) as Box<dyn std::error::Error + Send + Sync>,
+        ));
     }
     let (owner_id, file_id) = (keys[0].clone(), keys[1].clone());
 
     // 4. Look up FileDetails in Redis/Neo4j using get_by_ids
-    let file_list = FileDetails::get_by_ids(&[&[&owner_id, &file_id]])
-        .await
-        .map_err(|source| Error::InternalServerError { source })?;
+    let file_list = FileDetails::get_by_ids(&[&[&owner_id, &file_id]]).await?;
 
     // We expect only one result in file_list, a Vec<Option<FileDetails>>
     let Some(file_details) = file_list.into_iter().flatten().next() else {
@@ -74,12 +72,11 @@ pub async fn user_avatar_handler(
     let small_variant_content_type =
         Blob::get_by_id(&file_details, &FileVariant::Small, file_path.clone())
             .await
-            .map_err(|err| {
+            .inspect_err(|_| {
                 error!(
                     "Error while processing small variant for user: {} avatar with file: {}",
                     user_id, file_id
                 );
-                Error::InternalServerError { source: err }
             })?;
 
     // serve the file using ServeDir
@@ -107,9 +104,7 @@ pub async fn user_avatar_handler(
     // Insert a new Cache-Control header (e.g., 1 hour)
     let cache_control_header = "public, max-age=3600".parse().map_err(|err| {
         error!("Failed to parse Cache-Control header value: {}", err);
-        Error::InternalServerError {
-            source: Box::new(err),
-        }
+        Error::from(Box::new(err) as Box<dyn std::error::Error + Send + Sync>)
     })?;
 
     response

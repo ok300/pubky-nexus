@@ -37,7 +37,7 @@ pub async fn user_followers_handler(
     match Followers::get_by_id(&user_id, Some(skip), Some(limit)).await {
         Ok(Some(followers)) => Ok(Json(followers)),
         Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -69,7 +69,7 @@ pub async fn user_following_handler(
     match Following::get_by_id(&user_id, Some(skip), Some(limit)).await {
         Ok(Some(following)) => Ok(Json(following)),
         Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
@@ -101,7 +101,7 @@ pub async fn user_friends_handler(
     match Friends::get_by_id(&user_id, Some(skip), Some(limit)).await {
         Ok(Some(friends)) => Ok(Json(friends)),
         Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::routes::v0::endpoints::FILE_LIST_ROUTE;
-use crate::{Error, Result};
+use crate::Result;
 use axum::Json;
 use nexus_common::models::file::FileDetails;
 use nexus_common::models::traits::Collection;
@@ -48,7 +48,7 @@ pub async fn file_details_by_uris_handler(
             let data: Vec<FileDetails> = value.into_iter().flatten().collect();
             Ok(Json(data))
         }
-        Err(source) => Err(Error::InternalServerError { source }),
+        Err(source) => Err(source.into()),
     }
 }
 
