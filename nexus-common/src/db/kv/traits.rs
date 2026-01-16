@@ -4,6 +4,29 @@ use async_trait::async_trait;
 use json::JsonAction;
 use serde::{de::DeserializeOwned, Serialize};
 use sorted_sets::{ScoreAction, SortOrder, SORTED_PREFIX};
+use std::collections::HashMap;
+use std::sync::{LazyLock, RwLock};
+
+/// Global cache for computed prefixes, keyed by type name.
+/// This avoids recomputing the prefix string on every Redis operation.
+static PREFIX_CACHE: LazyLock<RwLock<HashMap<&'static str, String>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Attempts to retrieve a cached prefix for the given type name.
+fn get_cached_prefix(type_name: &'static str) -> Option<String> {
+    let cache = PREFIX_CACHE.read().ok()?;
+    cache.get(type_name).cloned()
+}
+
+/// Stores a computed prefix in the cache, returning the cached value.
+/// Uses entry API to handle race conditions where another thread may have
+/// already inserted the value.
+fn cache_prefix(type_name: &'static str, prefix: String) -> String {
+    let Ok(mut cache) = PREFIX_CACHE.write() else {
+        return prefix;
+    };
+    cache.entry(type_name).or_insert(prefix).clone()
+}
 
 /// A trait for operations involving Redis storage. Implement this trait for types that need to be stored
 /// and retrieved from Redis with serialization and deserialization capabilities.
@@ -19,20 +42,26 @@ pub trait RedisOps: Serialize + DeserializeOwned + Send + Sync {
     /// A `String` representing the prefix for Redis keys.
     async fn prefix() -> String {
         let type_name = std::any::type_name::<Self>();
+
+        // Fast path: return cached prefix if available
+        if let Some(cached) = get_cached_prefix(type_name) {
+            return cached;
+        }
+
+        // Slow path: compute prefix
         let struct_name = type_name.split("::").last().unwrap_or_default();
 
         // Insert ":" before each uppercase letter except the first one
         let mut prefixed_name = String::new();
-        let chars = struct_name.chars().peekable();
-
-        for c in chars {
+        for c in struct_name.chars() {
             if c.is_uppercase() && !prefixed_name.is_empty() {
                 prefixed_name.push(':');
             }
             prefixed_name.push(c);
         }
 
-        prefixed_name
+        // Store in cache and return
+        cache_prefix(type_name, prefixed_name)
     }
 
     // ############################################################
