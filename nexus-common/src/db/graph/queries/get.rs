@@ -640,6 +640,47 @@ pub fn get_files_by_ids(key_pair: &[&[&str]]) -> Query {
 }
 
 // Build the graph query based on parameters
+/// Applies engagement-based sorting to the Cypher query.
+///
+/// This adds OPTIONAL MATCH clauses to count tags, replies, and reposts,
+/// computes total engagement, and applies pagination filters based on engagement score.
+fn apply_engagement_sorting(cypher: &mut String, pagination: &Pagination) {
+    // TODO: These optional matches could potentially be combined/collected to improve performance
+    cypher.push_str(
+        "
+                // Count tags
+                OPTIONAL MATCH (p)<-[tag:TAGGED]-(:User)
+                // Count replies
+                OPTIONAL MATCH (p)<-[reply:REPLIED]-(:Post)
+                // Count reposts
+                OPTIONAL MATCH (p)<-[repost:REPOSTED]-(:Post)
+
+                WITH p, author,
+                    COUNT(DISTINCT tag) AS tags_count,
+                    COUNT(DISTINCT reply) AS replies_count,
+                    COUNT(DISTINCT repost) AS reposts_count,
+                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
+                ",
+    );
+
+    // Apply engagement-based pagination filters
+    let mut where_clause_applied = false;
+    if pagination.start.is_some() {
+        append_condition(
+            cypher,
+            "total_engagement <= $start",
+            &mut where_clause_applied,
+        );
+    }
+    if pagination.end.is_some() {
+        append_condition(
+            cypher,
+            "total_engagement >= $end",
+            &mut where_clause_applied,
+        );
+    }
+}
+
 pub fn post_stream(
     source: StreamSource,
     sorting: StreamSorting,
@@ -732,48 +773,10 @@ pub fn post_stream(
     cypher.push_str("WITH DISTINCT p, author\n");
 
     // Apply StreamSorting
-    // Conditionally compute engagement counts only for TotalEngagement sorting
     let order_clause = match sorting {
         StreamSorting::Timeline => "ORDER BY p.indexed_at DESC".to_string(),
         StreamSorting::TotalEngagement => {
-            // TODO: These optional matches could potentially be combined/collected to improve performance
-            cypher.push_str(
-                "
-                // Count tags
-                OPTIONAL MATCH (p)<-[tag:TAGGED]-(:User)  
-                // Count replies
-                OPTIONAL MATCH (p)<-[reply:REPLIED]-(:Post)
-                // Count reposts
-                OPTIONAL MATCH (p)<-[repost:REPOSTED]-(:Post)
-
-                WITH p, author, 
-                    COUNT(DISTINCT tag) AS tags_count,
-                    COUNT(DISTINCT reply) AS replies_count,
-                    COUNT(DISTINCT repost) AS reposts_count,
-                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
-                ",
-            );
-
-            // Initialise again
-            where_clause_applied = false;
-
-            // Add total_engagement to filter by engagement the post
-            if pagination.start.is_some() {
-                append_condition(
-                    &mut cypher,
-                    "total_engagement <= $start",
-                    &mut where_clause_applied,
-                );
-            }
-
-            if pagination.end.is_some() {
-                append_condition(
-                    &mut cypher,
-                    "total_engagement >= $end",
-                    &mut where_clause_applied,
-                );
-            }
-
+            apply_engagement_sorting(&mut cypher, &pagination);
             "ORDER BY total_engagement DESC".to_string()
         }
     };
