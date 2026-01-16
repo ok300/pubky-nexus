@@ -14,4 +14,4 @@ pub use errors::*;
 pub use graph::exec::*;
 pub use graph::queries;
 pub use graph::setup;
-pub use kv::RedisOps;
+pub use kv::{check_members_batch, RedisOps};

@@ -3,3 +3,5 @@ pub mod json;
 pub mod lists;
 pub mod sets;
 pub mod sorted_sets;
+
+pub use sets::check_members_batch;

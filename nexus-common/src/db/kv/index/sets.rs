@@ -358,3 +358,40 @@ pub async fn get_random_members(
 
     Ok(Some(random_members))
 }
+
+/// Checks membership for multiple (key, member) pairs in Redis sets using a single pipeline.
+///
+/// This function efficiently checks if multiple members exist in their respective Redis sets
+/// by batching all SISMEMBER operations into a single Redis pipeline call.
+///
+/// # Arguments
+///
+/// * `checks` - A slice of tuples where each tuple contains:
+///   - `prefix`: A string slice representing the prefix for the Redis key.
+///   - `key`: A string slice representing the key under which the set is stored.
+///   - `member`: A string slice representing the member to check for existence in the set.
+///
+/// # Returns
+///
+/// Returns a `Vec<bool>` where each element indicates whether the corresponding member
+/// exists in its set. The order of results matches the order of input checks.
+///
+/// # Errors
+///
+/// Returns an error if the Redis connection fails or the pipeline execution fails.
+pub async fn check_members_batch(checks: &[(&str, &str, &str)]) -> Result<Vec<bool>, DynError> {
+    if checks.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut redis_conn = get_redis_conn().await?;
+    let mut pipe = redis::pipe();
+
+    for (prefix, key, member) in checks {
+        let index_key = format!("{prefix}:{key}");
+        pipe.sismember(index_key, *member);
+    }
+
+    let results: Vec<bool> = pipe.query_async(&mut redis_conn).await?;
+    Ok(results)
+}
