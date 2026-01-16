@@ -520,7 +520,16 @@ impl PostStream {
             return Ok(Vec::new());
         }
 
+        Ok(Self::paginate_sorted_post_keys(post_keys, skip, limit))
+    }
+
+    fn paginate_sorted_post_keys(
+        mut post_keys: Vec<(f64, String)>,
+        skip: Option<usize>,
+        limit: Option<usize>,
+    ) -> Vec<(String, f64)> {
         // Sort all the collected posts globally by their score (descending)
+        // Keep treating NaN scores as equal to match the previous behavior and avoid panics
         post_keys.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
         // Apply global skip and limit after sorting
@@ -531,15 +540,13 @@ impl PostStream {
 
         // Ensure valid slice range
         if start_index >= end_index {
-            return Ok(Vec::new());
+            return Vec::new();
         }
 
-        let selected_post_keys = post_keys[start_index..end_index]
+        post_keys[start_index..end_index]
             .iter()
             .map(|(score, post_key)| (post_key.clone(), *score))
-            .collect();
-
-        Ok(selected_post_keys)
+            .collect()
     }
 
     pub async fn from_listed_post_ids(
@@ -720,5 +727,39 @@ impl PostStream {
             score_action,
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PostStream;
+
+    #[test]
+    fn paginate_sorted_post_keys_returns_empty_for_empty_input() {
+        let result = PostStream::paginate_sorted_post_keys(Vec::new(), Some(0), Some(10));
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn paginate_sorted_post_keys_sorts_and_slices() {
+        let posts = vec![
+            (5.0, "a:b".to_string()),
+            (10.0, "c:d".to_string()),
+            (7.5, "e:f".to_string()),
+        ];
+
+        let result = PostStream::paginate_sorted_post_keys(posts, Some(1), Some(1));
+
+        assert_eq!(result, vec![("e:f".to_string(), 7.5)]);
+    }
+
+    #[test]
+    fn paginate_sorted_post_keys_handles_skip_beyond_range() {
+        let posts = vec![(1.0, "a:b".to_string())];
+
+        let result = PostStream::paginate_sorted_post_keys(posts, Some(5), Some(1));
+
+        assert!(result.is_empty());
     }
 }
