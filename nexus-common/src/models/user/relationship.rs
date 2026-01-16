@@ -31,8 +31,10 @@ impl Relationship {
         user_id: &str,
         viewer_id: &str,
     ) -> Result<Option<Relationship>, DynError> {
-        let user_exist = UserCounts::get_from_index(user_id).await?;
-        let viewer_exist = UserCounts::get_from_index(viewer_id).await?;
+        let (user_exist, viewer_exist) = tokio::try_join!(
+            UserCounts::get_from_index(user_id),
+            UserCounts::get_from_index(viewer_id)
+        )?;
 
         // Make sure users exist before get their relationship
         if user_exist.is_none() || viewer_exist.is_none() {
