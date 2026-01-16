@@ -1,4 +1,3 @@
-use futures::future::try_join_all;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -59,13 +58,7 @@ impl UserView {
     /// Retrieves multiple users by their IDs using batch Redis operations for better performance.
     ///
     /// This method uses batch operations to fetch user details, counts, and relationships in bulk,
-    /// significantly improving performance when retrieving multiple users by reducing the number
-    /// of individual Redis/Neo4j queries.
-    ///
-    /// Optimizations:
-    /// - Details and counts are fetched using batch mget operations
-    /// - Relationships are fetched using a single batch pipeline operation
-    /// - Tags are fetched concurrently for all users that have tags
+    /// reducing the number of individual Redis queries from O(n) to O(1) for relationships.
     pub async fn get_by_ids(
         user_ids: &[String],
         viewer_id: Option<&str>,
@@ -82,50 +75,24 @@ impl UserView {
             Relationship::get_by_ids(user_ids, viewer_id),
         )?;
 
-        // Identify users that exist and have tags to fetch
-        let users_with_tags: Vec<(usize, String)> = user_ids
-            .iter()
-            .enumerate()
-            .filter_map(|(i, user_id)| {
-                if details_list[i].is_some() {
-                    let tag_count = counts_list[i].as_ref().map(|c| c.tags).unwrap_or(0);
-                    if tag_count > 0 {
-                        return Some((i, user_id.clone()));
-                    }
-                }
-                None
-            })
-            .collect();
-
-        // Fetch tags concurrently for all users that have tags
-        let tags_results: Vec<Option<Vec<TagDetails>>> = if users_with_tags.is_empty() {
-            Vec::new()
-        } else {
-            let tag_futures = users_with_tags.iter().map(|(_, user_id)| {
-                TagUser::get_by_id(user_id, None, None, None, None, viewer_id, depth)
-            });
-            try_join_all(tag_futures).await?
-        };
-
-        // Create a map of index -> tags for quick lookup
-        let mut tags_map: Vec<Option<Vec<TagDetails>>> = vec![None; user_ids.len()];
-        for (i, (original_idx, _)) in users_with_tags.iter().enumerate() {
-            tags_map[*original_idx] = tags_results[i].clone();
-        }
-
-        // Build final result
         let mut user_views = Vec::with_capacity(user_ids.len());
-        for i in 0..user_ids.len() {
-            let details = &details_list[i];
 
-            let Some(details) = details else {
+        for (i, user_id) in user_ids.iter().enumerate() {
+            let Some(details) = &details_list[i] else {
                 user_views.push(None);
                 continue;
             };
 
             let counts = counts_list[i].clone().unwrap_or_default();
             let relationship = relationships_list[i].clone().unwrap_or_default();
-            let tags = tags_map[i].take().unwrap_or_default();
+
+            // Fetch tags for users that have them
+            let tags = match counts.tags {
+                0 => Vec::new(),
+                _ => TagUser::get_by_id(user_id, None, None, None, None, viewer_id, depth)
+                    .await?
+                    .unwrap_or_default(),
+            };
 
             user_views.push(Some(Self {
                 details: details.clone(),
