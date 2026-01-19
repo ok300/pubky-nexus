@@ -1,0 +1,38 @@
+# Nextest configuration for pubky-nexus
+#
+# Test Isolation Strategy:
+# The nexus packages use global static singletons (OnceLock/OnceCell) for database
+# connectors (Neo4j, Redis, Pubky) that are initialized once per process and never
+# reset. Additionally, tests use tokio_shared_rt with shared runtime.
+#
+# This means tests within a package share state by design, but tests across packages
+# can interfere with each other when run in parallel because:
+# - The first package to initialize a connector wins
+# - Database state (mock data) differs between packages
+# - PubkyConnector singleton can be initialized with different SDK instances
+#
+# Solution: Use test groups to run packages sequentially while allowing tests within
+# each package to run in parallel.
+
+[profile.default]
+# Default test threads - tests within a package can run in parallel
+test-threads = "num-cpus"
+
+# Test groups define which tests belong together and share resources
+[test-groups]
+# All nexus packages share the same database connections, so they must run sequentially
+nexus-db = { max-threads = 1 }
+
+# Assign packages to the test group
+# This ensures only one package's tests run at a time
+[[profile.default.overrides]]
+filter = "package(nexus-common)"
+test-group = "nexus-db"
+
+[[profile.default.overrides]]
+filter = "package(nexus-webapi)"
+test-group = "nexus-db"
+
+[[profile.default.overrides]]
+filter = "package(nexus-watcher)"
+test-group = "nexus-db"
