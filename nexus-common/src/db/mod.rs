@@ -13,5 +13,6 @@ pub use connectors::{
 pub use errors::*;
 pub use graph::exec::*;
 pub use graph::queries;
+pub use graph::query_builder::QueryBuilder;
 pub use graph::setup;
 pub use kv::RedisOps;
