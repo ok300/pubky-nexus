@@ -6,6 +6,7 @@ use crate::types::StreamSorting;
 use crate::types::Timeframe;
 use neo4rs::{query, Query};
 use pubky_app_specs::PubkyAppPostKind;
+use crate::db::QueryBuilder;
 
 // Retrieve post node by post id and author id
 pub fn get_post_by_id(author_id: &str, post_id: &str) -> Query {
@@ -647,214 +648,111 @@ pub fn post_stream(
     pagination: Pagination,
     kind: Option<PubkyAppPostKind>,
 ) -> Query {
-    // Initialize the cypher query
-    let mut cypher = String::new();
+    let mut builder = QueryBuilder::new();
 
-    // Initialize where_clause_applied to false
-    let mut where_clause_applied = false;
-
-    // Start with the observer node if needed
-    // Needed that one for source pattern matching
-    if source.get_observer().is_some() {
-        cypher.push_str("MATCH (observer:User {id: $observer_id})\n");
+    // Observer
+    if let Some(observer_id) = source.get_observer() {
+        builder = builder
+            .match_clause("MATCH (observer:User {id: $observer_id})")
+            .param("observer_id", observer_id.to_string());
     }
 
     // Base match for posts and authors
-    cypher.push_str("MATCH (p:Post)<-[:AUTHORED]-(author:User)\n");
+    builder = builder.match_clause("MATCH (p:Post)<-[:AUTHORED]-(author:User)");
 
     // Apply source MATCH clause
-    if let Some(query) = match source {
-        StreamSource::Following { .. } => Some("MATCH (observer)-[:FOLLOWS]->(author)\n"),
-        StreamSource::Followers { .. } => Some("MATCH (observer)<-[:FOLLOWS]-(author)\n"),
-        StreamSource::Friends { .. } => {
-            Some("MATCH (observer)-[:FOLLOWS]->(author)-[:FOLLOWS]->(observer)\n")
+    match source {
+        StreamSource::Following { .. } => {
+            builder = builder.match_clause("MATCH (observer)-[:FOLLOWS]->(author)");
         }
-        StreamSource::Bookmarks { .. } => Some("MATCH (observer)-[:BOOKMARKED]->(p)\n"),
-        _ => None,
-    } {
-        cypher.push_str(query);
+        StreamSource::Followers { .. } => {
+            builder = builder.match_clause("MATCH (observer)<-[:FOLLOWS]-(author)");
+        }
+        StreamSource::Friends { .. } => {
+            builder = builder.match_clause("MATCH (observer)-[:FOLLOWS]->(author)-[:FOLLOWS]->(observer)");
+        }
+        StreamSource::Bookmarks { .. } => {
+            builder = builder.match_clause("MATCH (observer)-[:BOOKMARKED]->(p)");
+        }
+        _ => {}
     }
 
     // Apply tags
-    if tags.is_some() {
-        cypher.push_str("MATCH (User)-[tag:TAGGED]->(p)\n");
-        append_condition(
-            &mut cypher,
-            "tag.label IN $labels",
-            &mut where_clause_applied,
-        );
+    if let Some(labels) = tags.clone() {
+        builder = builder
+            .match_clause("MATCH (User)-[tag:TAGGED]->(p)")
+            .where_clause("tag.label IN $labels")
+            .param("labels", labels);
     }
 
     // If source has an author, add where clause. It is related with source pattern matching
     // If the source is Author, it is enough adding where clause. Not need to relate nodes
-    if source.get_author().is_some() {
-        append_condition(
-            &mut cypher,
-            "author.id = $author_id",
-            &mut where_clause_applied,
-        );
+    if let Some(author_id) = source.get_author() {
+        builder = builder
+            .where_clause("author.id = $author_id")
+            .param("author_id", author_id.to_string());
     }
 
     // If post kind is provided, add the corresponding condition
-    if kind.is_some() {
-        append_condition(&mut cypher, "p.kind = $kind", &mut where_clause_applied);
+    if let Some(post_kind) = kind {
+        builder = builder
+            .where_clause("p.kind = $kind")
+            .param("kind", post_kind.to_string());
     }
 
     // Filter just the parent posts: StreamSource:PostReplies and StreamSource:AuthorReplies do not reach that query
     // so we do not need any condition to filter just parent nodes
-    append_condition(
-        &mut cypher,
-        "NOT ( (p)-[:REPLIED]->(:Post) )",
-        &mut where_clause_applied,
-    );
-
-    // Apply time interval conditions. Only can be applied with timeline sorting
-    // The engagament score has to be computed
-    if sorting == StreamSorting::Timeline {
-        if pagination.start.is_some() {
-            append_condition(
-                &mut cypher,
-                "p.indexed_at <= $start",
-                &mut where_clause_applied,
-            );
-        }
-
-        if pagination.end.is_some() {
-            append_condition(
-                &mut cypher,
-                "p.indexed_at >= $end",
-                &mut where_clause_applied,
-            );
-        }
-    }
-
-    // Make unique the posts, cannot be repeated
-    cypher.push_str("WITH DISTINCT p, author\n");
+    builder = builder.where_clause("NOT ( (p)-[:REPLIED]->(:Post) )");
 
     // Apply StreamSorting
-    // Conditionally compute engagement counts only for TotalEngagement sorting
-    let order_clause = match sorting {
-        StreamSorting::Timeline => "ORDER BY p.indexed_at DESC".to_string(),
+    match sorting {
+        StreamSorting::Timeline => {
+            if let Some(start) = pagination.start {
+                builder = builder.where_clause("p.indexed_at <= $start").param("start", start);
+            }
+            if let Some(end) = pagination.end {
+                builder = builder.where_clause("p.indexed_at >= $end").param("end", end);
+            }
+            builder = builder.with_clause("DISTINCT p, author");
+            builder = builder.order_by("p.indexed_at DESC");
+        }
         StreamSorting::TotalEngagement => {
-            // TODO: These optional matches could potentially be combined/collected to improve performance
-            cypher.push_str(
-                "
-                // Count tags
-                OPTIONAL MATCH (p)<-[tag:TAGGED]-(:User)  
-                // Count replies
-                OPTIONAL MATCH (p)<-[reply:REPLIED]-(:Post)
-                // Count reposts
-                OPTIONAL MATCH (p)<-[repost:REPOSTED]-(:Post)
-
-                WITH p, author, 
-                    COUNT(DISTINCT tag) AS tags_count,
-                    COUNT(DISTINCT reply) AS replies_count,
-                    COUNT(DISTINCT repost) AS reposts_count,
-                    (COUNT(DISTINCT tag) + COUNT(DISTINCT reply) + COUNT(DISTINCT repost)) AS total_engagement
-                ",
+            builder = builder.with_clause("DISTINCT p, author");
+            builder = builder.with_clause(
+                "p, author, \
+                (size([(p)<-[:TAGGED]-(:User) | 1]) + \
+                 size([(p)<-[:REPLIED]-(:Post) | 1]) + \
+                 size([(p)<-[:REPOSTED]-(:Post) | 1])) AS total_engagement",
             );
 
-            // Initialise again
-            where_clause_applied = false;
-
-            // Add total_engagement to filter by engagement the post
-            if pagination.start.is_some() {
-                append_condition(
-                    &mut cypher,
-                    "total_engagement <= $start",
-                    &mut where_clause_applied,
-                );
+            let mut conditions = Vec::new();
+            if let Some(start) = pagination.start {
+                conditions.push("total_engagement <= $start".to_string());
+                builder = builder.param("start", start);
+            }
+            if let Some(end) = pagination.end {
+                conditions.push("total_engagement >= $end".to_string());
+                builder = builder.param("end", end);
             }
 
-            if pagination.end.is_some() {
-                append_condition(
-                    &mut cypher,
-                    "total_engagement >= $end",
-                    &mut where_clause_applied,
-                );
+            if !conditions.is_empty() {
+                let where_string = conditions.join(" AND ");
+                builder = builder.with_clause(&format!("p, author, total_engagement WHERE {}", where_string));
             }
 
-            "ORDER BY total_engagement DESC".to_string()
+            builder = builder.order_by("total_engagement DESC, p.indexed_at DESC");
         }
-    };
-
-    // Final return statement
-    cypher.push_str(&format!(
-        "RETURN author.id AS author_id, p.id AS post_id, p.indexed_at AS indexed_at\n{order_clause}\n"
-    ));
+    }
 
     // Apply skip and limit
     if let Some(skip) = pagination.skip {
-        cypher.push_str(&format!("SKIP {skip}\n"));
+        builder = builder.skip(skip);
     }
     if let Some(limit) = pagination.limit {
-        cypher.push_str(&format!("LIMIT {limit}\n"));
+        builder = builder.limit(limit);
     }
 
-    // Build the query and apply parameters using `param` method
-    build_query_with_params(&cypher, &source, tags, kind, &pagination)
-}
-
-/// Appends a condition to the Cypher query, using `WHERE` if no `WHERE` clause
-/// has been applied yet, or `AND` if a `WHERE` clause is already present.
-///
-/// # Arguments
-///
-/// * `cypher` - A mutable reference to the Cypher query string to which the condition will be appended
-/// * `condition` - The condition to be added to the query
-/// * `where_clause_applied` - A mutable reference to a boolean flag indicating whether a `WHERE` clause
-///   has already been applied to the query.
-fn append_condition(cypher: &mut String, condition: &str, where_clause_applied: &mut bool) {
-    if *where_clause_applied {
-        cypher.push_str(&format!("AND {condition}\n"));
-    } else {
-        cypher.push_str(&format!("WHERE {condition}\n"));
-        *where_clause_applied = true;
-    }
-}
-
-/// Builds a `Query` object by applying the necessary parameters to the Cypher query string.
-///
-/// This function takes the constructed Cypher query string and applies all the relevant parameters
-/// based on the provided `source`, `tags`, `kind`, and `pagination`. It ensures that all parameters
-/// used in the query are properly set with their corresponding values.
-///
-/// # Arguments
-///
-/// * `cypher` - The Cypher query string that has been constructed.
-/// * `source` - The `StreamSource` specifying the origin of the posts (e.g., Following, Followers).
-/// * `tags` - An optional list of tag labels to filter the posts.
-/// * `kind` - An optional `PubkyAppPostKind` to filter the posts by their kind.
-/// * `pagination` - The `Pagination` object containing pagination parameters like `start`, `end`, `skip`, and `limit`.
-fn build_query_with_params(
-    cypher: &str,
-    source: &StreamSource,
-    tags: &Option<Vec<String>>,
-    kind: Option<PubkyAppPostKind>,
-    pagination: &Pagination,
-) -> Query {
-    let mut query = query(cypher);
-
-    if let Some(observer_id) = source.get_observer() {
-        query = query.param("observer_id", observer_id.to_string());
-    }
-    if let Some(labels) = tags.clone() {
-        query = query.param("labels", labels);
-    }
-    if let Some(author_id) = source.get_author() {
-        query = query.param("author_id", author_id.to_string());
-    }
-    if let Some(post_kind) = kind {
-        query = query.param("kind", post_kind.to_string());
-    }
-    if let Some(start_interval) = pagination.start {
-        query = query.param("start", start_interval);
-    }
-    if let Some(end_interval) = pagination.end {
-        query = query.param("end", end_interval);
-    }
-
-    query
+    builder.return_clause("author.id AS author_id, p.id AS post_id, p.indexed_at AS indexed_at").build()
 }
 
 /// Determines whether a user has any relationships
