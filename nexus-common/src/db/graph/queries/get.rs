@@ -639,30 +639,12 @@ pub fn get_files_by_ids(key_pair: &[&[&str]]) -> Query {
     .param("pairs", key_pair)
 }
 
-// Build the graph query based on parameters
-pub fn post_stream(
-    source: StreamSource,
-    sorting: StreamSorting,
-    tags: &Option<Vec<String>>,
-    pagination: Pagination,
-    kind: Option<PubkyAppPostKind>,
-) -> Query {
-    // Initialize the cypher query
+fn build_match_clauses(source: &StreamSource, tags: &Option<Vec<String>>) -> String {
     let mut cypher = String::new();
-
-    // Initialize where_clause_applied to false
-    let mut where_clause_applied = false;
-
-    // Start with the observer node if needed
-    // Needed that one for source pattern matching
     if source.get_observer().is_some() {
         cypher.push_str("MATCH (observer:User {id: $observer_id})\n");
     }
-
-    // Base match for posts and authors
     cypher.push_str("MATCH (p:Post)<-[:AUTHORED]-(author:User)\n");
-
-    // Apply source MATCH clause
     if let Some(query) = match source {
         StreamSource::Following { .. } => Some("MATCH (observer)-[:FOLLOWS]->(author)\n"),
         StreamSource::Followers { .. } => Some("MATCH (observer)<-[:FOLLOWS]-(author)\n"),
@@ -674,58 +656,61 @@ pub fn post_stream(
     } {
         cypher.push_str(query);
     }
-
-    // Apply tags
     if tags.is_some() {
         cypher.push_str("MATCH (User)-[tag:TAGGED]->(p)\n");
-        append_condition(
-            &mut cypher,
-            "tag.label IN $labels",
-            &mut where_clause_applied,
-        );
+    }
+    cypher
+}
+
+fn build_where_conditions(
+    source: &StreamSource,
+    tags: &Option<Vec<String>>,
+    kind: &Option<PubkyAppPostKind>,
+    sorting: &StreamSorting,
+    pagination: &Pagination,
+) -> Vec<String> {
+    let mut conditions = Vec::new();
+
+    if tags.is_some() {
+        conditions.push("tag.label IN $labels".to_string());
     }
 
-    // If source has an author, add where clause. It is related with source pattern matching
-    // If the source is Author, it is enough adding where clause. Not need to relate nodes
     if source.get_author().is_some() {
-        append_condition(
-            &mut cypher,
-            "author.id = $author_id",
-            &mut where_clause_applied,
-        );
+        conditions.push("author.id = $author_id".to_string());
     }
 
-    // If post kind is provided, add the corresponding condition
     if kind.is_some() {
-        append_condition(&mut cypher, "p.kind = $kind", &mut where_clause_applied);
+        conditions.push("p.kind = $kind".to_string());
     }
 
-    // Filter just the parent posts: StreamSource:PostReplies and StreamSource:AuthorReplies do not reach that query
-    // so we do not need any condition to filter just parent nodes
-    append_condition(
-        &mut cypher,
-        "NOT ( (p)-[:REPLIED]->(:Post) )",
-        &mut where_clause_applied,
-    );
+    conditions.push("NOT ( (p)-[:REPLIED]->(:Post) )".to_string());
 
-    // Apply time interval conditions. Only can be applied with timeline sorting
-    // The engagament score has to be computed
-    if sorting == StreamSorting::Timeline {
+    if *sorting == StreamSorting::Timeline {
         if pagination.start.is_some() {
-            append_condition(
-                &mut cypher,
-                "p.indexed_at <= $start",
-                &mut where_clause_applied,
-            );
+            conditions.push("p.indexed_at <= $start".to_string());
         }
 
         if pagination.end.is_some() {
-            append_condition(
-                &mut cypher,
-                "p.indexed_at >= $end",
-                &mut where_clause_applied,
-            );
+            conditions.push("p.indexed_at >= $end".to_string());
         }
+    }
+
+    conditions
+}
+
+// Build the graph query based on parameters
+pub fn post_stream(
+    source: StreamSource,
+    sorting: StreamSorting,
+    tags: &Option<Vec<String>>,
+    pagination: Pagination,
+    kind: Option<PubkyAppPostKind>,
+) -> Query {
+    let mut cypher = build_match_clauses(&source, tags);
+
+    let conditions = build_where_conditions(&source, tags, &kind, &sorting, &pagination);
+    if !conditions.is_empty() {
+        cypher.push_str(&format!("WHERE {}\n", conditions.join(" AND ")));
     }
 
     // Make unique the posts, cannot be repeated
@@ -754,24 +739,19 @@ pub fn post_stream(
                 ",
             );
 
-            // Initialise again
-            where_clause_applied = false;
+            let mut conditions = Vec::new();
 
             // Add total_engagement to filter by engagement the post
             if pagination.start.is_some() {
-                append_condition(
-                    &mut cypher,
-                    "total_engagement <= $start",
-                    &mut where_clause_applied,
-                );
+                conditions.push("total_engagement <= $start".to_string());
             }
 
             if pagination.end.is_some() {
-                append_condition(
-                    &mut cypher,
-                    "total_engagement >= $end",
-                    &mut where_clause_applied,
-                );
+                conditions.push("total_engagement >= $end".to_string());
+            }
+
+            if !conditions.is_empty() {
+                cypher.push_str(&format!("WHERE {}\n", conditions.join(" AND ")));
             }
 
             "ORDER BY total_engagement DESC".to_string()
@@ -793,24 +773,6 @@ pub fn post_stream(
 
     // Build the query and apply parameters using `param` method
     build_query_with_params(&cypher, &source, tags, kind, &pagination)
-}
-
-/// Appends a condition to the Cypher query, using `WHERE` if no `WHERE` clause
-/// has been applied yet, or `AND` if a `WHERE` clause is already present.
-///
-/// # Arguments
-///
-/// * `cypher` - A mutable reference to the Cypher query string to which the condition will be appended
-/// * `condition` - The condition to be added to the query
-/// * `where_clause_applied` - A mutable reference to a boolean flag indicating whether a `WHERE` clause
-///   has already been applied to the query.
-fn append_condition(cypher: &mut String, condition: &str, where_clause_applied: &mut bool) {
-    if *where_clause_applied {
-        cypher.push_str(&format!("AND {condition}\n"));
-    } else {
-        cypher.push_str(&format!("WHERE {condition}\n"));
-        *where_clause_applied = true;
-    }
 }
 
 /// Builds a `Query` object by applying the necessary parameters to the Cypher query string.
