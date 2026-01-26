@@ -1,4 +1,4 @@
-use crate::event_processor::utils::watcher::WatcherTest;
+use crate::event_processor::utils::watcher::{assert_notification_count, WatcherTest};
 use anyhow::Result;
 use nexus_common::{
     models::notification::{Notification, NotificationBody, PostChangedSource},
@@ -62,15 +62,12 @@ async fn test_delete_reposted_post_notification() -> Result<()> {
     test.cleanup_post(&user_a_kp, &post_path).await?;
 
     // Verify that User B receives a notification about the deletion
+    // Use retry logic to handle potential timing issues in event processing
+    assert_notification_count(&user_b_id, 1).await;
+
     let notifications = Notification::get_by_id(&user_b_id, Pagination::default())
         .await
         .unwrap();
-
-    assert_eq!(
-        notifications.len(),
-        1,
-        "User B should have exactly one notification"
-    );
 
     if let NotificationBody::PostDeleted {
         delete_source,

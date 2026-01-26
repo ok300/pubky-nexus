@@ -6,7 +6,9 @@ use nexus_common::get_files_dir_test_pathbuf;
 use nexus_common::models::event::Event;
 use nexus_common::models::file::FileDetails;
 use nexus_common::models::homeserver::Homeserver;
+use nexus_common::models::notification::Notification;
 use nexus_common::models::traits::Collection;
+use nexus_common::types::Pagination;
 use nexus_common::types::DynError;
 use nexus_watcher::events::retry::event::RetryEvent;
 use nexus_watcher::events::{handle, Moderation};
@@ -388,6 +390,56 @@ pub async fn assert_eventually_exists(event_index: &str) {
         tokio::time::sleep(Duration::from_millis(SLEEP_MS)).await;
     }
     panic!("TIMEOUT: It takes to much time to read the RetryManager new index")
+}
+
+/// Waits for a user to have the expected number of notifications.
+///
+/// This function polls the notification count for a user with retries, handling
+/// potential timing issues where notifications might not be immediately available
+/// after event processing completes.
+///
+/// # Arguments
+/// * `user_id` - The user ID to check notifications for
+/// * `expected_count` - The expected number of notifications
+///
+/// # Panics
+/// Panics if the expected notification count is not reached within the timeout period.
+pub async fn assert_notification_count(user_id: &str, expected_count: usize) {
+    const SLEEP_MS: u64 = 10;
+    const MAX_RETRIES: usize = 50;
+
+    for attempt in 0..MAX_RETRIES {
+        let notifications = Notification::get_by_id(user_id, Pagination::default())
+            .await
+            .expect("Failed to fetch notifications");
+
+        if notifications.len() == expected_count {
+            return;
+        }
+
+        debug!(
+            "Notification count mismatch: expected {}, got {}. Attempt {}/{} (waiting {}ms)",
+            expected_count,
+            notifications.len(),
+            attempt + 1,
+            MAX_RETRIES,
+            SLEEP_MS
+        );
+
+        tokio::time::sleep(Duration::from_millis(SLEEP_MS)).await;
+    }
+
+    // Final check with detailed error message
+    let notifications = Notification::get_by_id(user_id, Pagination::default())
+        .await
+        .expect("Failed to fetch notifications");
+
+    panic!(
+        "TIMEOUT: Expected {} notification(s), but found {}. User ID: {}",
+        expected_count,
+        notifications.len(),
+        user_id
+    );
 }
 
 /// Common assertions for FileDetails of an existing file
