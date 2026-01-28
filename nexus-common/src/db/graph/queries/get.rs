@@ -639,30 +639,12 @@ pub fn get_files_by_ids(key_pair: &[&[&str]]) -> Query {
     .param("pairs", key_pair)
 }
 
-// Build the graph query based on parameters
-pub fn post_stream(
-    source: StreamSource,
-    sorting: StreamSorting,
-    tags: &Option<Vec<String>>,
-    pagination: Pagination,
-    kind: Option<PubkyAppPostKind>,
-) -> Query {
-    // Initialize the cypher query
+fn build_match_clause(source: &StreamSource, tags: &Option<Vec<String>>) -> String {
     let mut cypher = String::new();
-
-    // Initialize where_clause_applied to false
-    let mut where_clause_applied = false;
-
-    // Start with the observer node if needed
-    // Needed that one for source pattern matching
     if source.get_observer().is_some() {
         cypher.push_str("MATCH (observer:User {id: $observer_id})\n");
     }
-
-    // Base match for posts and authors
     cypher.push_str("MATCH (p:Post)<-[:AUTHORED]-(author:User)\n");
-
-    // Apply source MATCH clause
     if let Some(query) = match source {
         StreamSource::Following { .. } => Some("MATCH (observer)-[:FOLLOWS]->(author)\n"),
         StreamSource::Followers { .. } => Some("MATCH (observer)<-[:FOLLOWS]-(author)\n"),
@@ -674,19 +656,28 @@ pub fn post_stream(
     } {
         cypher.push_str(query);
     }
-
-    // Apply tags
     if tags.is_some() {
         cypher.push_str("MATCH (User)-[tag:TAGGED]->(p)\n");
+    }
+    cypher
+}
+
+fn build_where_clause(
+    source: &StreamSource,
+    tags: &Option<Vec<String>>,
+    kind: &Option<PubkyAppPostKind>,
+    sorting: &StreamSorting,
+    pagination: &Pagination,
+) -> String {
+    let mut cypher = String::new();
+    let mut where_clause_applied = false;
+    if tags.is_some() {
         append_condition(
             &mut cypher,
             "tag.label IN $labels",
             &mut where_clause_applied,
         );
     }
-
-    // If source has an author, add where clause. It is related with source pattern matching
-    // If the source is Author, it is enough adding where clause. Not need to relate nodes
     if source.get_author().is_some() {
         append_condition(
             &mut cypher,
@@ -694,23 +685,15 @@ pub fn post_stream(
             &mut where_clause_applied,
         );
     }
-
-    // If post kind is provided, add the corresponding condition
     if kind.is_some() {
         append_condition(&mut cypher, "p.kind = $kind", &mut where_clause_applied);
     }
-
-    // Filter just the parent posts: StreamSource:PostReplies and StreamSource:AuthorReplies do not reach that query
-    // so we do not need any condition to filter just parent nodes
     append_condition(
         &mut cypher,
         "NOT ( (p)-[:REPLIED]->(:Post) )",
         &mut where_clause_applied,
     );
-
-    // Apply time interval conditions. Only can be applied with timeline sorting
-    // The engagament score has to be computed
-    if sorting == StreamSorting::Timeline {
+    if *sorting == StreamSorting::Timeline {
         if pagination.start.is_some() {
             append_condition(
                 &mut cypher,
@@ -718,7 +701,6 @@ pub fn post_stream(
                 &mut where_clause_applied,
             );
         }
-
         if pagination.end.is_some() {
             append_condition(
                 &mut cypher,
@@ -727,16 +709,14 @@ pub fn post_stream(
             );
         }
     }
+    cypher
+}
 
-    // Make unique the posts, cannot be repeated
-    cypher.push_str("WITH DISTINCT p, author\n");
-
-    // Apply StreamSorting
-    // Conditionally compute engagement counts only for TotalEngagement sorting
+fn build_order_clause(sorting: &StreamSorting, pagination: &Pagination) -> String {
+    let mut cypher = String::new();
     let order_clause = match sorting {
         StreamSorting::Timeline => "ORDER BY p.indexed_at DESC".to_string(),
         StreamSorting::TotalEngagement => {
-            // TODO: These optional matches could potentially be combined/collected to improve performance
             cypher.push_str(
                 "
                 // Count tags
@@ -754,10 +734,7 @@ pub fn post_stream(
                 ",
             );
 
-            // Initialise again
-            where_clause_applied = false;
-
-            // Add total_engagement to filter by engagement the post
+            let mut where_clause_applied = false;
             if pagination.start.is_some() {
                 append_condition(
                     &mut cypher,
@@ -765,7 +742,6 @@ pub fn post_stream(
                     &mut where_clause_applied,
                 );
             }
-
             if pagination.end.is_some() {
                 append_condition(
                     &mut cypher,
@@ -773,25 +749,39 @@ pub fn post_stream(
                     &mut where_clause_applied,
                 );
             }
-
             "ORDER BY total_engagement DESC".to_string()
         }
     };
-
-    // Final return statement
     cypher.push_str(&format!(
         "RETURN author.id AS author_id, p.id AS post_id, p.indexed_at AS indexed_at\n{order_clause}\n"
     ));
-
-    // Apply skip and limit
     if let Some(skip) = pagination.skip {
         cypher.push_str(&format!("SKIP {skip}\n"));
     }
     if let Some(limit) = pagination.limit {
         cypher.push_str(&format!("LIMIT {limit}\n"));
     }
+    cypher
+}
 
-    // Build the query and apply parameters using `param` method
+// Build the graph query based on parameters
+pub fn post_stream(
+    source: StreamSource,
+    sorting: StreamSorting,
+    tags: &Option<Vec<String>>,
+    pagination: Pagination,
+    kind: Option<PubkyAppPostKind>,
+) -> Query {
+    let mut cypher = build_match_clause(&source, tags);
+    cypher.push_str(&build_where_clause(
+        &source,
+        tags,
+        &kind,
+        &sorting,
+        &pagination,
+    ));
+    cypher.push_str("WITH DISTINCT p, author\n");
+    cypher.push_str(&build_order_clause(&sorting, &pagination));
     build_query_with_params(&cypher, &source, tags, kind, &pagination)
 }
 
