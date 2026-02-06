@@ -106,6 +106,26 @@ impl Collection<&[&str]> for FileDetails {
     }
 }
 
+#[async_trait]
+impl Collection<Vec<String>> for FileDetails {
+    fn collection_details_graph_query(id_list: &[Vec<String>]) -> Query {
+        let refs: Vec<Vec<&str>> = id_list
+            .iter()
+            .map(|v| v.iter().map(|s| s.as_str()).collect())
+            .collect();
+        let slices: Vec<&[&str]> = refs.iter().map(|v| v.as_slice()).collect();
+        queries::get::get_files_by_ids(&slices)
+    }
+
+    fn put_graph_query(&self) -> Result<Query, DynError> {
+        queries::put::create_file(self)
+    }
+
+    async fn extend_on_index_miss(_: &[std::option::Option<Self>]) -> Result<(), DynError> {
+        Ok(())
+    }
+}
+
 impl FileDetails {
     pub fn from_homeserver(
         pubkyapp_file: &PubkyAppFile,

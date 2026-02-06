@@ -31,8 +31,7 @@ pub async fn sync_put(
         FileDetails::from_homeserver(&file, uri, user_id.to_string(), file_id, file_meta);
 
     // SAVE TO GRAPH
-    file_details
-        .put_to_graph()
+    <FileDetails as Collection<&[&str]>>::put_to_graph(&file_details)
         .await
         .map_err(|e| EventProcessorError::GraphQueryFailed {
             message: format!("{e:?}"),
@@ -43,7 +42,7 @@ pub async fn sync_put(
         &[&[
             file_details.owner_id.clone().as_str(),
             file_details.id.clone().as_str(),
-        ]],
+        ] as &[&str]],
         vec![Some(file_details)],
     )
     .await;
@@ -91,7 +90,7 @@ async fn ingest(
 
 pub async fn del(user_id: &PubkyId, file_id: String, files_path: PathBuf) -> Result<(), DynError> {
     debug!("Deleting File resource at {}/{}", user_id, file_id);
-    let result = FileDetails::get_by_ids(&[&[user_id, &file_id]]).await?;
+    let result = FileDetails::get_by_ids(&[&[user_id.as_str(), file_id.as_str()] as &[&str]]).await?;
 
     if !result.is_empty() {
         let file = &result[0];
