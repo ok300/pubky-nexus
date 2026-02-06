@@ -92,21 +92,6 @@ pub struct FileMeta {
 impl RedisOps for FileDetails {}
 
 #[async_trait]
-impl Collection<&[&str]> for FileDetails {
-    fn collection_details_graph_query(id_list: &[&[&str]]) -> Query {
-        queries::get::get_files_by_ids(id_list)
-    }
-
-    fn put_graph_query(&self) -> Result<Query, DynError> {
-        queries::put::create_file(self)
-    }
-
-    async fn extend_on_index_miss(_: &[std::option::Option<Self>]) -> Result<(), DynError> {
-        Ok(())
-    }
-}
-
-#[async_trait]
 impl Collection<Vec<String>> for FileDetails {
     fn collection_details_graph_query(id_list: &[Vec<String>]) -> Query {
         let refs: Vec<Vec<&str>> = id_list

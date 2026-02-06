@@ -34,14 +34,7 @@ pub async fn file_details_by_uris_handler(
         .map(|uri| FileDetails::file_key_from_uri(uri.as_str()))
         .collect();
 
-    let key_refs: Vec<Vec<&str>> = keys
-        .iter()
-        .map(|vec| vec.iter().map(|s| s.as_str()).collect())
-        .collect();
-
-    let slice_keys: Vec<&[&str]> = key_refs.iter().map(|arr| arr.as_slice()).collect();
-
-    let files = FileDetails::get_by_ids(&slice_keys).await?;
+    let files = FileDetails::get_by_ids(&keys).await?;
     let data: Vec<FileDetails> = files.into_iter().flatten().collect();
     Ok(Json(data))
 }

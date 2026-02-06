@@ -36,7 +36,7 @@ async fn test_static_image_serving_main() -> Result<()> {
         &full_image_path,
     )?;
 
-    let files = FileDetails::get_by_ids(vec![vec![USER_PUBKY, FILE_ID].as_slice()].as_slice())
+    let files = FileDetails::get_by_ids(&[vec![USER_PUBKY.to_string(), FILE_ID.to_string()]])
         .await
         .expect("Failed to fetch files from Nexus");
 
@@ -82,7 +82,7 @@ async fn test_static_image_serving_feed() -> Result<()> {
         &full_image_path,
     )?;
 
-    let files = FileDetails::get_by_ids(vec![vec![USER_PUBKY, FILE_ID].as_slice()].as_slice())
+    let files = FileDetails::get_by_ids(&[vec![USER_PUBKY.to_string(), FILE_ID.to_string()]])
         .await
         .expect("Failed to fetch files from Nexus");
 
@@ -135,7 +135,7 @@ async fn test_static_image_serving_small() -> Result<()> {
         &full_image_path,
     )?;
 
-    let files = FileDetails::get_by_ids(vec![vec![USER_PUBKY, FILE_ID].as_slice()].as_slice())
+    let files = FileDetails::get_by_ids(&[vec![USER_PUBKY.to_string(), FILE_ID.to_string()]])
         .await
         .expect("Failed to fetch files from Nexus");
 

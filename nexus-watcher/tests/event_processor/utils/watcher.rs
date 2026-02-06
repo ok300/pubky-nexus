@@ -421,7 +421,7 @@ pub async fn assert_file_details(
 ) -> FileDetails {
     let file_absolute_url = file_uri_builder(user_id.into(), file_id.into());
 
-    let files = FileDetails::get_by_ids(vec![vec![user_id, file_id].as_slice()].as_slice())
+    let files = FileDetails::get_by_ids(&[vec![user_id.to_string(), file_id.to_string()]])
         .await
         .expect("Failed to fetch files from Nexus");
 
