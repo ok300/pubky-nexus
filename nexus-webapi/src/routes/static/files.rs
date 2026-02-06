@@ -74,7 +74,7 @@ pub async fn static_files_handler(
     let file_path: &PathBuf = &app_state.files_path;
 
     let files = FileDetails::get_by_ids(
-        vec![vec![owner_id.as_str(), file_id.as_str()].as_slice()].as_slice(),
+        &[vec![owner_id.clone(), file_id.clone()]],
     )
     .await
     .inspect_err(|_| {

@@ -26,7 +26,7 @@ pub async fn file_details_handler(Path(file_uri): Path<String>) -> Result<Json<F
     debug!("GET {FILE_ROUTE} file_uri:{}", file_uri);
 
     let file_key = FileDetails::file_key_from_uri(&file_uri);
-    let files = FileDetails::get_by_ids(&[&[file_key[0].as_str(), file_key[1].as_str()] as &[&str]]).await?;
+    let files = FileDetails::get_by_ids(&[file_key]).await?;
 
     let file = &files[0];
     match file {
