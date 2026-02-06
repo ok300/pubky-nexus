@@ -648,36 +648,13 @@ pub fn post_stream(
     kind: Option<PubkyAppPostKind>,
 ) -> Query {
     // Initialize the cypher query
-    let mut cypher = String::new();
+    let mut cypher = build_match_clause(&source, tags);
 
     // Initialize where_clause_applied to false
     let mut where_clause_applied = false;
 
-    // Start with the observer node if needed
-    // Needed that one for source pattern matching
-    if source.get_observer().is_some() {
-        cypher.push_str("MATCH (observer:User {id: $observer_id})\n");
-    }
-
-    // Base match for posts and authors
-    cypher.push_str("MATCH (p:Post)<-[:AUTHORED]-(author:User)\n");
-
-    // Apply source MATCH clause
-    if let Some(query) = match source {
-        StreamSource::Following { .. } => Some("MATCH (observer)-[:FOLLOWS]->(author)\n"),
-        StreamSource::Followers { .. } => Some("MATCH (observer)<-[:FOLLOWS]-(author)\n"),
-        StreamSource::Friends { .. } => {
-            Some("MATCH (observer)-[:FOLLOWS]->(author)-[:FOLLOWS]->(observer)\n")
-        }
-        StreamSource::Bookmarks { .. } => Some("MATCH (observer)-[:BOOKMARKED]->(p)\n"),
-        _ => None,
-    } {
-        cypher.push_str(query);
-    }
-
     // Apply tags
     if tags.is_some() {
-        cypher.push_str("MATCH (User)-[tag:TAGGED]->(p)\n");
         append_condition(
             &mut cypher,
             "tag.label IN $labels",
@@ -685,48 +662,13 @@ pub fn post_stream(
         );
     }
 
-    // If source has an author, add where clause. It is related with source pattern matching
-    // If the source is Author, it is enough adding where clause. Not need to relate nodes
-    if source.get_author().is_some() {
-        append_condition(
-            &mut cypher,
-            "author.id = $author_id",
-            &mut where_clause_applied,
-        );
-    }
-
-    // If post kind is provided, add the corresponding condition
-    if kind.is_some() {
-        append_condition(&mut cypher, "p.kind = $kind", &mut where_clause_applied);
-    }
-
-    // Filter just the parent posts: StreamSource:PostReplies and StreamSource:AuthorReplies do not reach that query
-    // so we do not need any condition to filter just parent nodes
-    append_condition(
-        &mut cypher,
-        "NOT ( (p)-[:REPLIED]->(:Post) )",
+    cypher.push_str(&build_where_clause(
+        &source,
+        &kind,
+        &sorting,
+        &pagination,
         &mut where_clause_applied,
-    );
-
-    // Apply time interval conditions. Only can be applied with timeline sorting
-    // The engagament score has to be computed
-    if sorting == StreamSorting::Timeline {
-        if pagination.start.is_some() {
-            append_condition(
-                &mut cypher,
-                "p.indexed_at <= $start",
-                &mut where_clause_applied,
-            );
-        }
-
-        if pagination.end.is_some() {
-            append_condition(
-                &mut cypher,
-                "p.indexed_at >= $end",
-                &mut where_clause_applied,
-            );
-        }
-    }
+    ));
 
     // Make unique the posts, cannot be repeated
     cypher.push_str("WITH DISTINCT p, author\n");
@@ -793,6 +735,79 @@ pub fn post_stream(
 
     // Build the query and apply parameters using `param` method
     build_query_with_params(&cypher, &source, tags, kind, &pagination)
+}
+
+/// Builds the MATCH part of the Cypher query based on the stream source and tags.
+fn build_match_clause(source: &StreamSource, tags: &Option<Vec<String>>) -> String {
+    let mut cypher = String::new();
+
+    // Start with the observer node if needed
+    if source.get_observer().is_some() {
+        cypher.push_str("MATCH (observer:User {id: $observer_id})\n");
+    }
+
+    // Base match for posts and authors
+    cypher.push_str("MATCH (p:Post)<-[:AUTHORED]-(author:User)\n");
+
+    // Apply source MATCH clause
+    if let Some(query) = match source {
+        StreamSource::Following { .. } => Some("MATCH (observer)-[:FOLLOWS]->(author)\n"),
+        StreamSource::Followers { .. } => Some("MATCH (observer)<-[:FOLLOWS]-(author)\n"),
+        StreamSource::Friends { .. } => {
+            Some("MATCH (observer)-[:FOLLOWS]->(author)-[:FOLLOWS]->(observer)\n")
+        }
+        StreamSource::Bookmarks { .. } => Some("MATCH (observer)-[:BOOKMARKED]->(p)\n"),
+        _ => None,
+    } {
+        cypher.push_str(query);
+    }
+
+    // Apply tags MATCH clause
+    if tags.is_some() {
+        cypher.push_str("MATCH (User)-[tag:TAGGED]->(p)\n");
+    }
+
+    cypher
+}
+
+/// Builds the WHERE part of the Cypher query based on various filter conditions.
+fn build_where_clause(
+    source: &StreamSource,
+    kind: &Option<PubkyAppPostKind>,
+    sorting: &StreamSorting,
+    pagination: &Pagination,
+    where_clause_applied: &mut bool,
+) -> String {
+    let mut conditions = Vec::new();
+
+    if source.get_author().is_some() {
+        conditions.push("author.id = $author_id".to_string());
+    }
+
+    if kind.is_some() {
+        conditions.push("p.kind = $kind".to_string());
+    }
+
+    conditions.push("NOT ( (p)-[:REPLIED]->(:Post) )".to_string());
+
+    if *sorting == StreamSorting::Timeline {
+        if pagination.start.is_some() {
+            conditions.push("p.indexed_at <= $start".to_string());
+        }
+        if pagination.end.is_some() {
+            conditions.push("p.indexed_at >= $end".to_string());
+        }
+    }
+
+    if conditions.is_empty() {
+        return String::new();
+    }
+
+    let mut where_clause = String::new();
+    for condition in conditions {
+        append_condition(&mut where_clause, &condition, where_clause_applied);
+    }
+    where_clause
 }
 
 /// Appends a condition to the Cypher query, using `WHERE` if no `WHERE` clause
