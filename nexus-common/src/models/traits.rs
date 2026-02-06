@@ -6,18 +6,36 @@ use neo4rs::Query;
 use std::fmt::Debug;
 
 pub trait CollectionId {
-    fn to_string_id(self) -> String;
+    fn to_string_id(&self) -> String;
 }
 
 impl CollectionId for &str {
-    fn to_string_id(self) -> String {
-        String::from(self)
+    fn to_string_id(&self) -> String {
+        String::from(*self)
     }
 }
 
-impl CollectionId for &[&str] {
-    fn to_string_id(self) -> String {
-        self.join(":")
+impl CollectionId for String {
+    fn to_string_id(&self) -> String {
+        self.clone()
+    }
+}
+
+impl<T: AsRef<str>> CollectionId for Vec<T> {
+    fn to_string_id(&self) -> String {
+        self.iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<&str>>()
+            .join(":")
+    }
+}
+
+impl<T: AsRef<str>> CollectionId for &[T] {
+    fn to_string_id(&self) -> String {
+        self.iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<&str>>()
+            .join(":")
     }
 }
 
@@ -25,7 +43,7 @@ impl CollectionId for &[&str] {
 pub trait Collection<T>
 where
     Self: RedisOps + Clone + Debug + Default,
-    T: CollectionId + fmt::Debug + Sync + Send + Copy,
+    T: CollectionId + fmt::Debug + Sync + Send + Clone,
 {
     /// Retrieves records by their IDs, first attempting to fetch them from a cache (e.g., Redis),
     /// and then querying a graph database (e.g., Neo4j) if necessary.
@@ -51,12 +69,12 @@ where
         let mut missing_ids: Vec<(usize, T)> = Vec::new();
         for (i, details) in collection.iter().enumerate() {
             if details.is_none() {
-                missing_ids.push((i, ids[i]));
+                missing_ids.push((i, ids[i].clone()));
             }
         }
 
         if !missing_ids.is_empty() {
-            let flat_missing_ids: Vec<T> = missing_ids.iter().map(|&(_, id)| id).collect();
+            let flat_missing_ids: Vec<T> = missing_ids.iter().map(|(_, id)| id.clone()).collect();
             let fetched_details = Self::get_from_graph(&flat_missing_ids).await?;
 
             if !fetched_details.is_empty() {
@@ -116,7 +134,7 @@ where
         for (detail, id) in records.iter().zip(ids.iter()) {
             if let Some(value) = detail {
                 found_records.push(Some(value.clone()));
-                found_record_ids.push(*id);
+                found_record_ids.push(id.clone());
             }
         }
         let key_parts_list: Vec<String> = found_record_ids

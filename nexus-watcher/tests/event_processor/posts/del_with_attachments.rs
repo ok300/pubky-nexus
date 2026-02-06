@@ -75,7 +75,7 @@ async fn test_homeserver_del_post_with_attachments() -> Result<()> {
     test.cleanup_file(&user_kp, &file_paths[1]).await?;
 
     for file_id in file_ids {
-        let files = FileDetails::get_by_ids(&[&[&user_id, &file_id]])
+        let files = FileDetails::get_by_ids(&[vec![user_id.clone(), file_id.clone()]])
             .await
             .expect("Failed to fetch files from Nexus");
 

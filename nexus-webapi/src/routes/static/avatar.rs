@@ -58,7 +58,7 @@ pub async fn user_avatar_handler(
     let (owner_id, file_id) = (keys[0].clone(), keys[1].clone());
 
     // 4. Look up FileDetails in Redis/Neo4j using get_by_ids
-    let file_list = FileDetails::get_by_ids(&[&[&owner_id, &file_id]]).await?;
+    let file_list = FileDetails::get_by_ids(&[vec![owner_id.clone(), file_id.clone()]]).await?;
 
     // We expect only one result in file_list, a Vec<Option<FileDetails>>
     let Some(file_details) = file_list.into_iter().flatten().next() else {

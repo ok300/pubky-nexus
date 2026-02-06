@@ -17,7 +17,7 @@ async fn test_static_serving() -> Result<()> {
     let test_file_user = "y4euc58gnmxun9wo87gwmanu6kztt9pgw1zz1yp1azp7trrsjamy";
 
     let files =
-        FileDetails::get_by_ids(vec![vec![test_file_user, test_file_id].as_slice()].as_slice())
+        FileDetails::get_by_ids(&[vec![test_file_user.to_string(), test_file_id.to_string()]])
             .await
             .expect("Failed to fetch files from Nexus");
 
@@ -64,7 +64,7 @@ async fn test_static_serving_dl_param() -> Result<()> {
     let test_file_user = "y4euc58gnmxun9wo87gwmanu6kztt9pgw1zz1yp1azp7trrsjamy";
 
     let files =
-        FileDetails::get_by_ids(vec![vec![test_file_user, test_file_id].as_slice()].as_slice())
+        FileDetails::get_by_ids(&[vec![test_file_user.to_string(), test_file_id.to_string()]])
             .await
             .expect("Failed to fetch files from Nexus");
 

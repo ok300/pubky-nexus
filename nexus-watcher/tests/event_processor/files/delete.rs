@@ -49,7 +49,7 @@ async fn test_delete_pubkyapp_file() -> Result<()> {
     let (file_id, file_path) = test.create_file(&user_kp, &file).await?;
 
     // Act
-    let files_before_delete = FileDetails::get_by_ids(&[&[&user_id, &file_id]])
+    let files_before_delete = FileDetails::get_by_ids(&[vec![user_id.clone(), file_id.clone()]])
         .await
         .expect("Failed to fetch files from Nexus");
 
@@ -62,7 +62,7 @@ async fn test_delete_pubkyapp_file() -> Result<()> {
     test.cleanup_file(&user_kp, &file_path).await?;
 
     // Assert
-    let files = FileDetails::get_by_ids(&[&[&user_id, &file_id]])
+    let files = FileDetails::get_by_ids(&[vec![user_id.clone(), file_id.clone()]])
         .await
         .expect("Failed to fetch files from Nexus");
 
