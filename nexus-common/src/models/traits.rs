@@ -15,15 +15,27 @@ impl CollectionId for &str {
     }
 }
 
-impl CollectionId for &[&str] {
+impl CollectionId for String {
     fn to_string_id(&self) -> String {
-        self.join(":")
+        self.clone()
     }
 }
 
-impl CollectionId for Vec<String> {
+impl<T: AsRef<str>> CollectionId for Vec<T> {
     fn to_string_id(&self) -> String {
-        self.join(":")
+        self.iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<&str>>()
+            .join(":")
+    }
+}
+
+impl<T: AsRef<str>> CollectionId for &[T] {
+    fn to_string_id(&self) -> String {
+        self.iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<&str>>()
+            .join(":")
     }
 }
 
