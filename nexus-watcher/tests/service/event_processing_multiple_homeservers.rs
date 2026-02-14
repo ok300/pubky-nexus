@@ -142,7 +142,7 @@ async fn test_multi_hs_event_processing_with_homeserver_limit_one() -> Result<()
     assert_eq!(hs_list.len(), 1);
     // The hs in the list should NOT be the default homeserver
     assert_ne!(
-        hs_list.get(0).unwrap(),
+        hs_list.first().unwrap(),
         &runner_one.default_homeserver(),
         "pre_run_all should not include the default homeserver"
     );
