@@ -7,11 +7,13 @@ use crate::event_processor::users::utils::find_user_counts;
 use crate::event_processor::utils::watcher::{HomeserverHashIdPath, WatcherTest};
 use anyhow::Result;
 use chrono::Utc;
+use nexus_common::models::event::Event;
 use nexus_common::models::notification::Notification;
 use nexus_common::models::post::PostDetails;
 use nexus_common::models::tag::post::TagPost;
+use nexus_common::models::tag::search::TagSearch;
 use nexus_common::models::tag::traits::TagCollection;
-use nexus_common::types::Pagination;
+use nexus_common::types::{DynError, Pagination};
 use pubky::Keypair;
 use pubky_app_specs::post_uri_builder;
 use pubky_app_specs::{PubkyAppPost, PubkyAppTag, PubkyAppUser};
@@ -52,6 +54,7 @@ async fn test_homeserver_put_tag_post() -> Result<()> {
     };
     let tag_path = tag.hs_path();
 
+    let (_, events_in_redis_before) = Event::get_events_from_redis(None, 1000).await.unwrap();
     // Put tag
     test.put(&user_kp, &tag_path, tag).await?;
 
@@ -68,6 +71,8 @@ async fn test_homeserver_put_tag_post() -> Result<()> {
     assert_eq!(post_tag.taggers[0], tagger_user_id);
 
     // CACHE_OP: Check if the tag is correctly cached
+    let (_, events_in_redis_after) = Event::get_events_from_redis(None, 1000).await.unwrap();
+    assert!(events_in_redis_after > events_in_redis_before);
     let cache_post_tag = TagPost::get_from_index(
         &tagger_user_id,
         Some(&post_id),
@@ -155,7 +160,7 @@ async fn test_homeserver_put_tag_post() -> Result<()> {
 }
 
 #[tokio_shared_rt::test(shared)]
-async fn test_homeserver_put_tag_post_unique_count() -> Result<()> {
+async fn test_homeserver_put_tag_post_unique_count() -> Result<(), DynError> {
     let mut test = WatcherTest::setup().await?;
 
     // Create a user
@@ -200,6 +205,10 @@ async fn test_homeserver_put_tag_post_unique_count() -> Result<()> {
     let post_counts_after_step_2 = find_post_counts(&tagger_user_id, &post_id).await;
     assert_eq!(post_counts_after_step_2.tags, 0);
     assert_eq!(post_counts_after_step_2.unique_tags, 0);
+
+    let tag_suggestions = TagSearch::get_by_label(label, &Pagination::default()).await?;
+    let tag_suggestions_found = tag_suggestions.is_some_and(|x| !x.is_empty());
+    assert!(!tag_suggestions_found);
 
     // Step 3: Re-add tag
     test.put(&tagger_kp, &tag_path, tag).await?;

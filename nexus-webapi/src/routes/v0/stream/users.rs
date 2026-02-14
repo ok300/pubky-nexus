@@ -45,7 +45,6 @@ pub struct UserStreamQuery {
     ),
     responses(
         (status = 200, description = "Users stream", body = UserStream),
-        (status = 404, description = "Users not found"),
         (status = 500, description = "Internal server error")
     ),
     description = r#"Stream Users: Retrieve a stream of users.
@@ -67,18 +66,10 @@ pub async fn stream_users_handler(
     );
 
     let (input, viewer_id, depth) = build_user_stream_input(query)?;
-    let source = input.source.clone();
-    let requested_user = input.user_id.clone();
 
-    match UserStream::get_by_id(input, viewer_id, depth).await {
-        Ok(Some(stream)) => Ok(Json(stream)),
-        Ok(None) => Err(Error::EmptyStream {
-            message: format!(
-                "No users found for the requested stream: {:?} {:?}",
-                source, requested_user
-            ),
-        }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match UserStream::get_by_id(input, viewer_id, depth).await? {
+        Some(stream) => Ok(Json(stream)),
+        None => Ok(Json(UserStream::default())),
     }
 }
 
@@ -101,7 +92,6 @@ pub async fn stream_users_handler(
     ),
     responses(
         (status = 200, description = "User IDs stream", body = UserIdStream),
-        (status = 404, description = "User IDs not found"),
         (status = 500, description = "Internal server error")
     ),
     description = r#"Stream User IDs: Retrieve a stream of user identifiers.
@@ -123,30 +113,10 @@ pub async fn stream_user_ids_handler(
     );
 
     let (input, _, _) = build_user_stream_input(query)?;
-    let source = input.source.clone();
-    let requested_user = input.user_id.clone();
 
-    match UserStream::get_user_list_from_source(input).await {
-        Ok(Some(user_ids)) => {
-            let stream = UserIdStream::new(user_ids);
-            if stream.is_empty() {
-                Err(Error::EmptyStream {
-                    message: format!(
-                        "No user ids found for the requested stream: {:?} {:?}",
-                        source, requested_user
-                    ),
-                })
-            } else {
-                Ok(Json(stream))
-            }
-        }
-        Ok(None) => Err(Error::EmptyStream {
-            message: format!(
-                "No user ids found for the requested stream: {:?} {:?}",
-                source, requested_user
-            ),
-        }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match UserStream::get_user_list_from_source(input).await? {
+        Some(user_ids) => Ok(Json(UserIdStream::new(user_ids))),
+        None => Ok(Json(UserIdStream::default())),
     }
 }
 
@@ -172,7 +142,6 @@ pub struct UserStreamSearchQuery {
     responses(
         (status = 200, description = "Username search stream", body = UserStream),
         (status = 400, description = "Bad Request"),
-        (status = 404, description = "No users found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -181,18 +150,13 @@ pub async fn stream_username_search_handler(
 ) -> Result<Json<UserStream>> {
     let username = query.username.trim();
     if username.is_empty() {
-        return Err(Error::InvalidInput {
-            message: "Username cannot be empty".to_string(),
-        });
+        return Err(Error::invalid_input("Username cannot be empty"));
     }
 
     let skip = query.pagination.skip.unwrap_or(0);
     let limit = query.pagination.limit.unwrap_or(20);
 
-    debug!(
-        "GET {STREAM_USERS_USERNAME_SEARCH_ROUTE}?username={}",
-        username
-    );
+    debug!("GET {STREAM_USERS_USERNAME_SEARCH_ROUTE}?username={username}");
 
     match UserStream::get_from_username_search(
         username,
@@ -200,13 +164,10 @@ pub async fn stream_username_search_handler(
         Some(skip),
         Some(limit),
     )
-    .await
+    .await?
     {
-        Ok(Some(stream)) => Ok(Json(stream)),
-        Ok(None) => Err(Error::EmptyStream {
-            message: format!("No users found for the username '{username}'"),
-        }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Some(stream) => Ok(Json(stream)),
+        None => Ok(Json(UserStream::default())),
     }
 }
 
@@ -233,7 +194,6 @@ pub struct UserStreamByIdsRequest {
     ),
     responses(
         (status = 200, description = "Users stream", body = UserStream),
-        (status = 404, description = "Users not found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -248,15 +208,13 @@ pub async fn stream_users_by_ids_handler(
     const MAX_USERS: usize = 100;
 
     if request.user_ids.len() > MAX_USERS {
-        return Err(Error::InvalidInput {
-            message: format!("The maximum number of user IDs allowed is {MAX_USERS}"),
-        });
+        let err_msg = format!("The maximum number of user IDs allowed is {MAX_USERS}");
+        return Err(Error::invalid_input(&err_msg));
     }
 
     if request.user_ids.is_empty() {
-        return Err(Error::InvalidInput {
-            message: "The list of user IDs provided is empty".to_string(),
-        });
+        let err_msg = "The list of user IDs provided is empty";
+        return Err(Error::invalid_input(err_msg));
     }
 
     match UserStream::from_listed_user_ids(
@@ -264,16 +222,10 @@ pub async fn stream_users_by_ids_handler(
         request.viewer_id.as_deref(),
         request.depth,
     )
-    .await
+    .await?
     {
-        Ok(Some(stream)) => Ok(Json(stream)),
-        Ok(None) => Err(Error::EmptyStream {
-            message: format!(
-                "No users found for the requested stream with user ids: {:?}",
-                request.user_ids
-            ),
-        }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Some(stream) => Ok(Json(stream)),
+        None => Ok(Json(UserStream::default())),
     }
 }
 
@@ -301,56 +253,31 @@ fn build_user_stream_input(
 
     if user_id.is_none() {
         match source {
-            UserStreamSource::Followers => {
-                return Err(Error::InvalidInput {
-                    message: "user_id query param must be provided for source 'followers'"
-                        .to_string(),
-                })
+            UserStreamSource::Followers
+            | UserStreamSource::Following
+            | UserStreamSource::Friends
+            | UserStreamSource::Muted
+            | UserStreamSource::Recommended => {
+                return Err(Error::invalid_input(&format!(
+                    "user_id query param must be provided for source '{}'",
+                    source_name(&source)
+                )));
             }
-            UserStreamSource::Following => {
-                return Err(Error::InvalidInput {
-                    message: "user_id query param must be provided for source 'following'"
-                        .to_string(),
-                })
-            }
-            UserStreamSource::Friends => {
-                return Err(Error::InvalidInput {
-                    message: "user_id query param must be provided for source 'friends'"
-                        .to_string(),
-                })
-            }
-            UserStreamSource::Muted => {
-                return Err(Error::InvalidInput {
-                    message: "user_id query param must be provided for source 'muted'".to_string(),
-                })
-            }
-            UserStreamSource::Recommended => {
-                return Err(Error::InvalidInput {
-                    message: "user_id query param must be provided for source 'recommended'"
-                        .to_string(),
-                })
-            }
-            UserStreamSource::Influencers => {
-                if reach.is_some() {
-                    return Err(Error::InvalidInput {
-                        message:
-                            "reach query param must be provided for source 'influencers' with a user_id"
-                                .to_string(),
-                    });
-                }
+            UserStreamSource::Influencers if reach.is_some() => {
+                return Err(Error::invalid_input(
+                    "user_id query param must be provided for source 'influencers' when reach is specified",
+                ));
             }
             UserStreamSource::PostReplies => {
                 if author_id.is_none() {
-                    return Err(Error::InvalidInput {
-                        message: "author_id query param must be provided for source 'post_replies'"
-                            .to_string(),
-                    });
+                    return Err(Error::invalid_input(
+                        "author_id query param must be provided for source 'post_replies'",
+                    ));
                 }
                 if post_id.is_none() {
-                    return Err(Error::InvalidInput {
-                        message: "post_id query param must be provided for source 'post_replies'"
-                            .to_string(),
-                    });
+                    return Err(Error::invalid_input(
+                        "post_id query param must be provided for source 'post_replies'",
+                    ));
                 }
             }
             _ => (),
@@ -372,6 +299,20 @@ fn build_user_stream_input(
     Ok((input, viewer_id, depth))
 }
 
+/// Returns the snake_case name of the source for error messages.
+fn source_name(source: &UserStreamSource) -> &'static str {
+    match source {
+        UserStreamSource::Followers => "followers",
+        UserStreamSource::Following => "following",
+        UserStreamSource::Friends => "friends",
+        UserStreamSource::Muted => "muted",
+        UserStreamSource::MostFollowed => "most_followed",
+        UserStreamSource::Influencers => "influencers",
+        UserStreamSource::Recommended => "recommended",
+        UserStreamSource::PostReplies => "post_replies",
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -380,6 +321,13 @@ fn build_user_stream_input(
         stream_username_search_handler,
         stream_users_by_ids_handler
     ),
-    components(schemas(UserIdStream, UserStream, UserStreamSource, UserStreamByIdsRequest))
+    components(schemas(
+        UserIdStream,
+        UserStream,
+        UserStreamSource,
+        UserStreamByIdsRequest,
+        StreamReach,
+        Timeframe
+    ))
 )]
 pub struct StreamUsersApiDocs;

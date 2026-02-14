@@ -48,9 +48,9 @@ impl PostStreamQuery {
     pub fn validate_tags(&self) -> AppResult<()> {
         if let Some(ref tags) = self.tags {
             if tags.len() > MAX_TAGS {
-                return Err(Error::InvalidInput {
-                    message: format!("Too many tags provided; maximum allowed is {MAX_TAGS}"),
-                });
+                return Err(Error::invalid_input(&format!(
+                    "Too many tags provided; maximum allowed is {MAX_TAGS}"
+                )));
             }
         }
         Ok(())
@@ -95,7 +95,6 @@ where
     ),
     responses(
         (status = 200, description = "Posts stream", body = PostStream),
-        (status = 404, description = "Posts not found"),
         (status = 500, description = "Internal server error")
     ),
     description = r#"Stream Posts: Retrieve a stream of posts.
@@ -127,13 +126,10 @@ pub async fn stream_posts_handler(
         query.tags,
         query.kind,
     )
-    .await
+    .await?
     {
-        Ok(Some(stream)) => Ok(Json(stream)),
-        Ok(None) => Err(Error::EmptyStream {
-            message: "No posts found for the given criteria".to_string(),
-        }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Some(stream) => Ok(Json(stream)),
+        None => Ok(Json(PostStream::default())),
     }
 }
 
@@ -157,7 +153,6 @@ pub async fn stream_posts_handler(
     ),
     responses(
         (status = 200, description = "Post key stream", body = PostKeyStream),
-        (status = 404, description = "Posts not found"),
         (status = 500, description = "Internal server error")
     ),
     description = r#"Stream Post Keys: Retrieve a stream of post keys
@@ -187,13 +182,10 @@ pub async fn stream_post_keys_handler(
         query.tags,
         query.kind,
     )
-    .await
+    .await?
     {
-        Ok(Some(stream)) => Ok(Json(stream)),
-        Ok(None) => Err(Error::EmptyStream {
-            message: "No posts found for the given criteria".to_string(),
-        }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Some(stream) => Ok(Json(stream)),
+        None => Ok(Json(PostKeyStream::default())),
     }
 }
 
@@ -214,7 +206,6 @@ pub struct PostStreamByIdsRequest {
     ),
     responses(
         (status = 200, description = "Post stream", body = PostStream),
-        (status = 404, description = "Posts not found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -230,26 +221,18 @@ pub async fn stream_posts_by_ids_handler(
     const MAX_POSTS: usize = 100;
 
     if request.post_ids.len() > MAX_POSTS {
-        return Err(Error::InvalidInput {
-            message: format!("The maximum number of post IDs allowed is {MAX_POSTS}"),
-        });
+        let err_msg = format!("The maximum number of post IDs allowed is {MAX_POSTS}");
+        return Err(Error::invalid_input(&err_msg));
     }
 
     if request.post_ids.is_empty() {
-        return Err(Error::InvalidInput {
-            message: "The list of post IDs provided is empty".to_string(),
-        });
+        let err_msg = "The list of post IDs provided is empty";
+        return Err(Error::invalid_input(err_msg));
     }
 
-    match PostStream::from_listed_post_ids(request.viewer_id, &request.post_ids).await {
-        Ok(Some(stream)) => Ok(Json(stream)),
-        Ok(None) => Err(Error::EmptyStream {
-            message: format!(
-                "No users found for the requested stream with user ids: {:?}",
-                request.post_ids
-            ),
-        }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match PostStream::from_listed_post_ids(request.viewer_id, &request.post_ids).await? {
+        Some(stream) => Ok(Json(stream)),
+        None => Ok(Json(PostStream::default())),
     }
 }
 
@@ -260,6 +243,6 @@ pub async fn stream_posts_by_ids_handler(
         stream_post_keys_handler,
         stream_posts_by_ids_handler
     ),
-    components(schemas(PostKeyStream, PostStream, StreamSorting, StreamSource))
+    components(schemas(PostKeyStream, PostStream, StreamSorting, StreamSource, SortOrder))
 )]
 pub struct StreamPostsApiDocs;

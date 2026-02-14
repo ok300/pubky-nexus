@@ -2,14 +2,13 @@ use std::collections::HashSet;
 
 use super::{Influencers, Muted, UserCounts, UserSearch, UserView};
 
-use crate::db::kv::SortOrder;
+use crate::db::kv::{RedisResult, SortOrder};
 use crate::db::{fetch_all_rows_from_graph, queries, RedisOps};
 use crate::models::follow::{Followers, Following, Friends, UserFollows};
 use crate::models::post::{PostStream, POST_REPLIES_PER_POST_KEY_PARTS};
 use crate::types::{DynError, StreamReach, Timeframe};
 
 use serde::{Deserialize, Serialize};
-use tokio::task::spawn;
 use utoipa::ToSchema;
 
 pub const USER_MOSTFOLLOWED_KEY_PARTS: [&str; 2] = ["Users", "MostFollowed"];
@@ -44,17 +43,15 @@ pub struct UserStreamInput {
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Debug, Default, Clone)]
-pub struct UserIdStream {
-    pub user_ids: Vec<String>,
-}
+pub struct UserIdStream(pub Vec<String>);
 
 impl UserIdStream {
     pub fn new(user_ids: Vec<String>) -> Self {
-        Self { user_ids }
+        Self(user_ids)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.user_ids.is_empty()
+        self.0.is_empty()
     }
 }
 
@@ -101,28 +98,13 @@ impl UserStream {
         viewer_id: Option<&str>,
         depth: Option<u8>,
     ) -> Result<Option<Self>, DynError> {
-        // TODO: potentially we could use a new redis_com.mget() with a single call to retrieve all
-        // user details at once and build the user profiles on the fly.
-        // But still, using tokio to create them concurrently has VERY high performance.
-        let viewer_id = viewer_id.map(|id| id.to_string());
-        let mut handles = Vec::with_capacity(user_ids.len());
-
-        for user_id in user_ids {
-            let user_id = user_id.clone();
-            let viewer_id = viewer_id.clone();
-            let handle =
-                spawn(
-                    async move { UserView::get_by_id(&user_id, viewer_id.as_deref(), depth).await },
-                );
-            handles.push(handle);
-        }
+        // Use the new mget batch operation to retrieve all user views efficiently
+        let user_views_result = UserView::get_by_ids(user_ids, viewer_id, depth).await?;
 
         let mut user_views = Vec::with_capacity(user_ids.len());
 
-        for handle in handles {
-            if let Some(user_view) = handle.await?? {
-                user_views.push(user_view);
-            }
+        for view in user_views_result.into_iter().flatten() {
+            user_views.push(view);
         }
 
         match user_views.is_empty() {
@@ -135,7 +117,7 @@ impl UserStream {
     pub async fn add_to_most_followed_sorted_set(
         user_id: &str,
         counts: &UserCounts,
-    ) -> Result<(), DynError> {
+    ) -> RedisResult<()> {
         Self::put_index_sorted_set(
             &USER_MOSTFOLLOWED_KEY_PARTS,
             &[(counts.followers as f64, user_id)],
@@ -149,7 +131,7 @@ impl UserStream {
     pub async fn add_to_influencers_sorted_set(
         user_id: &str,
         counts: &UserCounts,
-    ) -> Result<(), DynError> {
+    ) -> RedisResult<()> {
         let score = (counts.tagged + counts.posts) as f64 * (counts.followers as f64).sqrt();
         Self::put_index_sorted_set(&USER_INFLUENCERS_KEY_PARTS, &[(score, user_id)], None, None)
             .await
@@ -205,6 +187,7 @@ impl UserStream {
             Some(CACHE_USER_RECOMMENDED_KEY_PARTS.join(":")),
         )
         .await
+        .map_err(Into::into)
     }
 
     /// Helper method to cache recommended users in Redis with a TTL.
@@ -218,6 +201,7 @@ impl UserStream {
             Some(CACHE_USER_RECOMMENDED_KEY_PARTS.join(":")),
         )
         .await
+        .map_err(Into::into)
     }
 
     async fn get_post_replies_ids(

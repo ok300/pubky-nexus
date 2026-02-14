@@ -9,7 +9,7 @@ use nexus_common::models::tag::Taggers as TaggersType;
 use nexus_common::types::routes::HotTagsInputDTO;
 use nexus_common::types::{Pagination, StreamReach, Timeframe};
 use serde::Deserialize;
-use tracing::{debug, error};
+use tracing::debug;
 use utoipa::OpenApi;
 
 #[derive(Deserialize, Debug)]
@@ -46,7 +46,6 @@ pub struct TagTaggersQuery {
     ),
     responses(
         (status = 200, description = "Taggers", body = TaggersType),
-        (status = 404, description = "Tag not found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -54,16 +53,13 @@ pub async fn tag_taggers_handler(
     Path(label): Path<String>,
     Query(query): Query<TagTaggersQuery>,
 ) -> Result<Json<TaggersType>> {
-    debug!(
-        "GET {TAG_TAGGERS_ROUTE} label:{}, query: {:?}",
-        label, query
-    );
+    debug!("GET {TAG_TAGGERS_ROUTE} label:{label}, query: {query:?}");
 
     // Check if user_id and reach are provided together
     if query.user_id.is_some() ^ query.reach.is_some() {
-        return Err(Error::InvalidInput {
-            message: String::from("user_id and reach should be both provided together"),
-        });
+        return Err(Error::invalid_input(
+            "user_id and reach should be both provided together",
+        ));
     }
 
     let skip = query.pagination.skip.unwrap_or(0);
@@ -78,11 +74,10 @@ pub async fn tag_taggers_handler(
         limit,
         timeframe,
     )
-    .await
+    .await?
     {
-        Ok(Some(post)) => Ok(Json(post)),
-        Ok(None) => Err(Error::TagsNotFound { reach: label }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Some(post) => Ok(Json(post)),
+        None => Ok(Json(vec![])),
     }
 }
 
@@ -101,7 +96,6 @@ pub async fn tag_taggers_handler(
     ),
     responses(
         (status = 200, description = "Retrieve tags by reach cluster", body = Vec<HotTag>),
-        (status = 404, description = "Hot tags not found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -110,9 +104,9 @@ pub async fn hot_tags_handler(Query(query): Query<HotTagsQuery>) -> Result<Json<
 
     // Check if user_id and reach are provided together
     if query.user_id.is_some() ^ query.reach.is_some() {
-        return Err(Error::InvalidInput {
-            message: String::from("user_id and reach should be both provided together"),
-        });
+        return Err(Error::invalid_input(
+            "user_id and reach should be both provided together",
+        ));
     }
 
     let skip = query.pagination.skip.unwrap_or(0);
@@ -128,21 +122,15 @@ pub async fn hot_tags_handler(Query(query): Query<HotTagsQuery>) -> Result<Json<
         tagged_type: Some(TaggedType::Post),
     };
 
-    match HotTags::get_hot_tags(query.user_id, query.reach, &input).await {
-        Ok(Some(hot_tags)) => Ok(Json(hot_tags)),
-        Ok(None) => Err(Error::EmptyStream {
-            message: String::from("No hot tags found for the given criteria"),
-        }),
-        Err(source) => {
-            error!("Internal Server ERROR: {:?}", source);
-            Err(Error::InternalServerError { source })
-        }
+    match HotTags::get_hot_tags(query.user_id, query.reach, &input).await? {
+        Some(hot_tags) => Ok(Json(hot_tags)),
+        None => Ok(Json(HotTags::default())),
     }
 }
 
 #[derive(OpenApi)]
 #[openapi(
     paths(hot_tags_handler, tag_taggers_handler),
-    components(schemas(HotTags, HotTag, Taggers))
+    components(schemas(HotTags, HotTag, Taggers, StreamReach, Timeframe))
 )]
 pub struct TagGlobalApiDoc;

@@ -1,5 +1,6 @@
 use crate::db::exec_single_row;
 use crate::db::fetch_key_from_graph;
+use crate::db::kv::RedisResult;
 use crate::db::queries;
 use crate::db::{PubkyConnector, RedisOps};
 use crate::models::user::UserDetails;
@@ -61,7 +62,7 @@ impl Homeserver {
     }
 
     /// Retrieves the homeserver from Redis.
-    pub async fn get_from_index(id: &str) -> Result<Option<Self>, DynError> {
+    pub async fn get_from_index(id: &str) -> RedisResult<Option<Self>> {
         Self::try_from_index_json(&[id], None).await
     }
 
@@ -70,8 +71,9 @@ impl Homeserver {
         if self.cursor.is_empty() {
             return Err("Cannot save to index a homeserver with an empty cursor".into());
         }
-
-        self.put_index_json(&[&self.id], None, None).await
+        self.put_index_json(&[&self.id], None, None)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn get_by_id(homeserver_id: PubkyId) -> Result<Option<Homeserver>, DynError> {
@@ -122,9 +124,8 @@ impl Homeserver {
     /// ### Arguments
     ///
     /// - `referenced_post_uri`: The parent post (if current post is a reply to it), or a reposted post (if current post is a Repost)
-    pub async fn maybe_ingest_for_post(referenced_post_uri: &str) -> Result<(), DynError> {
-        let parsed_post_uri = ParsedUri::try_from(referenced_post_uri)?;
-        let ref_post_author_id = parsed_post_uri.user_id.as_str();
+    pub async fn maybe_ingest_for_post(referenced_post_uri: &ParsedUri) -> Result<(), DynError> {
+        let ref_post_author_id = referenced_post_uri.user_id.as_str();
 
         Self::maybe_ingest_for_user(ref_post_author_id).await
     }
@@ -150,7 +151,7 @@ impl Homeserver {
             return Ok(());
         };
 
-        let hs_pk = PubkyId::try_from(ref_post_author_hs.to_string().as_str())?;
+        let hs_pk = PubkyId::from(ref_post_author_hs.into_inner());
         Self::persist_if_unknown(hs_pk.clone())
             .await
             .inspect(|_| tracing::info!("Ingested homeserver {hs_pk}"))

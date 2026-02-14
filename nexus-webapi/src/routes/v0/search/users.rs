@@ -28,7 +28,6 @@ pub struct SearchQuery {
     responses(
         (status = 200, description = "Search results", body = UserSearch),
         (status = 400, description = "Invalid input"),
-        (status = 404, description = "No users found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -46,12 +45,9 @@ pub async fn search_users_by_name_handler(
     let skip = query.pagination.skip.unwrap_or(0);
     let limit = query.pagination.limit.unwrap_or(200);
 
-    match UserSearch::get_by_name(&username, Some(skip), Some(limit)).await {
-        Ok(Some(user_search)) => Ok(Json(user_search)),
-        Ok(None) => Err(Error::UserNotFound {
-            user_id: username.clone(),
-        }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match UserSearch::get_by_name(&username, Some(skip), Some(limit)).await? {
+        Some(user_search) => Ok(Json(user_search)),
+        None => Ok(Json(UserSearch::default())),
     }
 }
 
@@ -68,7 +64,6 @@ pub async fn search_users_by_name_handler(
     responses(
         (status = 200, description = "Search results", body = UserSearch),
         (status = 400, description = "Invalid input"),
-        (status = 404, description = "No users found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -88,12 +83,9 @@ pub async fn search_users_by_id_handler(
     let skip = query.pagination.skip.unwrap_or(0);
     let limit = query.pagination.limit.unwrap_or(200);
 
-    match UserSearch::get_by_id(&id_prefix, Some(skip), Some(limit)).await {
-        Ok(Some(user_search)) => Ok(Json(user_search)),
-        Ok(None) => Err(Error::UserNotFound {
-            user_id: id_prefix.clone(),
-        }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match UserSearch::get_by_id(&id_prefix, Some(skip), Some(limit)).await? {
+        Some(user_search) => Ok(Json(user_search)),
+        None => Ok(Json(UserSearch::default())),
     }
 }
 

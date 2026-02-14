@@ -1,5 +1,4 @@
 use crate::routes::v0::endpoints::{USER_TAGGERS_ROUTE, USER_TAGS_ROUTE};
-use crate::routes::v0::utils::json_array_or_no_content;
 use crate::routes::v0::{TaggersInfoResponse, TagsQuery};
 use crate::{Error, Result};
 use axum::extract::{Path, Query};
@@ -26,8 +25,7 @@ use utoipa::OpenApi;
         ("depth" = Option<usize>, Query, description = "User trusted network depth, user following users distance. Numbers bigger than 4, will be ignored")
     ),
     responses(
-        (status = 200, description = "User tags", body = TagDetails),
-        (status = 204, description = "Tags not found"),
+        (status = 200, description = "User tags", body = Vec<TagDetails>),
         (status = 404, description = "User not found"),
         (status = 500, description = "Internal server error")
     )
@@ -50,11 +48,10 @@ pub async fn user_tags_handler(
         query.viewer_id.as_deref(),
         query.depth,
     )
-    .await
+    .await?
     {
-        Ok(Some(tags)) => json_array_or_no_content(tags, "tags"),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+        Some(tags) => Ok(Json(tags)),
+        None => Err(Error::UserNotFound { user_id }),
     }
 }
 
@@ -81,7 +78,6 @@ pub struct TaggersQuery {
     ),
     responses(
         (status = 200, description = "User tags", body = TaggersInfoResponse),
-        (status = 404, description = "User not found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -97,7 +93,7 @@ pub async fn user_taggers_handler(
         user_id, label, pagination.skip, pagination.limit, tags_query.viewer_id, tags_query.depth
     );
 
-    match TagUser::get_tagger_by_id(
+    let taggers = TagUser::get_tagger_by_id(
         &user_id,
         None,
         &label,
@@ -105,12 +101,8 @@ pub async fn user_taggers_handler(
         tags_query.viewer_id.as_deref(),
         tags_query.depth,
     )
-    .await
-    {
-        Ok(Some(tags)) => Ok(Json(TaggersInfoResponse::from(tags))),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
-    }
+    .await?;
+    Ok(Json(TaggersInfoResponse::from(taggers)))
 }
 
 #[derive(OpenApi)]

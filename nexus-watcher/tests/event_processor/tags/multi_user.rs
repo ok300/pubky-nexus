@@ -55,7 +55,7 @@ async fn test_homeserver_multi_user_tags() -> Result<()> {
         };
         let tag_path = tag.hs_path();
         // Put tag
-        test.put(&tagger_kp, &tag_path, tag).await?;
+        test.put(tagger_kp, &tag_path, tag).await?;
         tag_paths_and_tagger_kps.push((tag_path, tagger_kp))
     }
 
@@ -69,7 +69,7 @@ async fn test_homeserver_multi_user_tags() -> Result<()> {
         };
         let tag_path = tag.hs_path();
         // Put tag
-        test.put(&tagger_kp, &tag_path, tag).await?;
+        test.put(tagger_kp, &tag_path, tag).await?;
         tag_paths_and_tagger_kps.push((tag_path, tagger_kp))
     }
 
@@ -132,7 +132,7 @@ async fn test_homeserver_multi_user_tags() -> Result<()> {
 
     // Step 4: DEL tag from homeserver
     for (tag_url, tagger_kp) in tag_paths_and_tagger_kps {
-        test.del(&tagger_kp, &tag_url).await?;
+        test.del(tagger_kp, &tag_url).await?;
     }
 
     // Step 5: Assert all the DEL operations
@@ -157,18 +157,18 @@ async fn test_homeserver_multi_user_tags() -> Result<()> {
 
     // User:Taggers:author_id:label
     let wind_label_key = vec![tagged_id.as_str(), label_wind];
-    let wind_tag_collection =
+    let (wind_taggers_result, _) =
         <TagUser as TaggersCollection>::get_from_index(wind_label_key, None, None, None, None)
             .await
             .unwrap();
-    assert!(wind_tag_collection.is_none());
+    assert!(wind_taggers_result.is_empty());
 
     let earth_label_key = vec![tagged_id.as_str(), label_earth];
-    let earth_tag_collection =
+    let (earth_taggers_result, _) =
         <TagUser as TaggersCollection>::get_from_index(earth_label_key, None, None, None, None)
             .await
             .unwrap();
-    assert!(earth_tag_collection.is_none());
+    assert!(earth_taggers_result.is_empty());
 
     // Check if user counts updated: User:Counts:user_id:post_id
     let user_counts = find_user_counts(tagged_id).await;

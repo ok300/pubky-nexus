@@ -1,4 +1,4 @@
-use crate::events::errors::EventProcessorError;
+use crate::events::EventProcessorError;
 use crate::handle_indexing_results;
 use nexus_common::db::DbError;
 use nexus_common::db::PubkyConnector;
@@ -91,10 +91,7 @@ async fn ingest(
 
 pub async fn del(user_id: &PubkyId, file_id: String, files_path: PathBuf) -> Result<(), DynError> {
     debug!("Deleting File resource at {}/{}", user_id, file_id);
-    let result = FileDetails::get_by_ids(
-        vec![vec![user_id.as_str(), file_id.as_str()].as_slice()].as_slice(),
-    )
-    .await?;
+    let result = FileDetails::get_by_ids(&[&[user_id, &file_id]]).await?;
 
     if !result.is_empty() {
         let file = &result[0];

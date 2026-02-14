@@ -16,14 +16,13 @@ use utoipa::OpenApi;
 #[utoipa::path(
     get,
     path = BOOTSTRAP_ROUTE,
-    description = "Initial payload for all data required to bootstrap the pubky.app application. The client app will request it while the user is performing sign-in in order to pre-populate the client DB",
+    description = "Initial payload for all data required to bootstrap the pubky.app application. The client app will request it while the user is performing sign-in/sign-up in order to pre-populate the client DB",
     tag = "Bootstrap",
     params(
         ("user_id" = String, Path, description = "User Pubky ID")
     ),
     responses(
         (status = 200, description = "Initial payload to bootstrap the client", body = Bootstrap),
-        (status = 404, description = "user_id requested for bootstrap payload not found"),
         (status = 500, description = "Internal server error")
     )
 )]
@@ -34,11 +33,7 @@ pub async fn bootstrap_handler(
 ) -> Result<Json<Bootstrap>> {
     debug!("GET {BOOTSTRAP_ROUTE}, user_id:{}", user_id);
 
-    match Bootstrap::get_by_id(&user_id, ViewType::Full).await {
-        Ok(Some(result)) => Ok(Json(result)),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
-    }
+    Ok(Json(Bootstrap::get_by_id(&user_id, ViewType::Full).await?))
 }
 
 #[utoipa::path(
@@ -60,9 +55,8 @@ pub async fn put_homeserver_handler(Path(user_id): Path<String>) -> Result<()> {
     PubkyId::try_from(&user_id)
         .map_err(|e| Error::invalid_input(&format!("Invalid user PK: {e}")))?;
 
-    Homeserver::maybe_ingest_for_user(&user_id)
-        .await
-        .map_err(Error::internal)
+    Homeserver::maybe_ingest_for_user(&user_id).await?;
+    Ok(())
 }
 
 #[derive(OpenApi)]
