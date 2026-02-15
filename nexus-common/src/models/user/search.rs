@@ -2,7 +2,7 @@ use super::UserDetails;
 use crate::db::kv::RedisResult;
 use crate::db::RedisOps;
 use crate::models::create_zero_score_tuples;
-use crate::{models::traits::Collection, types::DynError};
+use crate::types::DynError;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -118,21 +118,16 @@ impl UserSearch {
         if user_ids.is_empty() {
             return Ok(());
         }
-        let mut records_to_delete: Vec<String> = Vec::with_capacity(user_ids.len());
-        let keys: Vec<Vec<&str>> = user_ids.iter().map(|&id| vec![id]).collect();
-        let users = UserDetails::get_from_index(keys.iter().map(|item| item.as_slice()).collect())
-            .await?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<UserDetails>>();
+        
+        // Pre-allocate with a reasonable capacity estimate
+        // Each user might have multiple username entries in the sorted set
+        let mut records_to_delete: Vec<String> = Vec::with_capacity(user_ids.len() * 2);
+        
+        // For each user_id, scan the sorted set directly to find ALL entries
+        // This is more reliable than relying on the JSON index which may be stale
         for user_id in user_ids {
-            let existing_username = users
-                .iter()
-                .find(|user| user.id.to_string() == *user_id)
-                .map(|user| user.name.to_lowercase());
-            if let Some(existing_record) = existing_username {
-                let search_key = format!("{existing_record}:{user_id}");
-                records_to_delete.push(search_key);
+            if let Some(entries) = Self::find_entries_by_user_id(user_id).await? {
+                records_to_delete.extend(entries);
             }
         }
 
@@ -147,6 +142,51 @@ impl UserSearch {
         .await?;
         Self::remove_from_index_sorted_set(None, &USER_ID_KEY_PARTS, user_ids).await?;
         Ok(())
+    }
+
+    /// Finds all entries in the Sorted:Users:Name set that end with the given user_id
+    async fn find_entries_by_user_id(user_id: &str) -> Result<Option<Vec<String>>, DynError> {
+        // Use ZSCAN to iterate through the sorted set and find entries ending with :user_id
+        use crate::db::get_redis_conn;
+        
+        let index_key = format!("Sorted:{}:{}", USER_NAME_KEY_PARTS[0], USER_NAME_KEY_PARTS[1]);
+        let mut redis_conn = get_redis_conn().await?;
+        let suffix = format!(":{}", user_id);
+        let mut matching_entries = Vec::new();
+        
+        // Use ZSCAN to iterate through all entries
+        let mut cursor = 0u64;
+        loop {
+            let (new_cursor, entries): (u64, Vec<String>) = redis::cmd("ZSCAN")
+                .arg(&index_key)
+                .arg(cursor)
+                .query_async(&mut redis_conn)
+                .await?;
+            
+            // ZSCAN returns alternating member/score pairs, we only want members (even indices)
+            for (i, entry) in entries.iter().enumerate() {
+                if i % 2 == 0 && entry.ends_with(&suffix) {
+                    matching_entries.push(entry.clone());
+                }
+            }
+            
+            cursor = new_cursor;
+            if cursor == 0 {
+                break;
+            }
+        }
+        
+        if matching_entries.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(matching_entries))
+        }
+    }
+
+    /// Deletes all sorted set entries for a given user_id
+    /// This is used when completely removing a user from the system
+    pub async fn delete_from_index(user_id: &str) -> Result<(), DynError> {
+        Self::delete_existing_records(&[user_id]).await
     }
 }
 
