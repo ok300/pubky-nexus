@@ -242,14 +242,36 @@ async fn test_stream_posts_by_multiple_tags() -> Result<()> {
         TAG_LABEL_4.to_owned(),
     ];
 
-    // Iterate over each post and check if it contains any of the requested tags
-    for post in post_stream.0 {
-        let has_tag = post.tags.iter().any(|tag| valid_tags.contains(&tag.label));
+    // Track the maximum number of matching tags seen so far
+    let mut max_matches_seen = valid_tags.len();
 
+    // Iterate over each post and verify ordering by number of matching tags (N, N-1, N-2, ...)
+    for post in post_stream.0 {
+        let post_tag_labels: Vec<String> = post.tags.iter().map(|tag| tag.label.clone()).collect();
+
+        // Check if post has at least one of the requested tags
+        let has_any_tag = valid_tags.iter().any(|tag| post_tag_labels.contains(tag));
         assert!(
-            has_tag,
-            "Post should be tagged with any of the requested tags: {valid_tags:?}"
+            has_any_tag,
+            "Post should be tagged with at least one of the requested tags: {valid_tags:?}, but found: {post_tag_labels:?}"
         );
+
+        // Count how many of the requested tags this post has
+        let matching_count = valid_tags
+            .iter()
+            .filter(|tag| post_tag_labels.contains(tag))
+            .count();
+
+        // Ensure posts are ordered by decreasing number of matching tags
+        assert!(
+            matching_count <= max_matches_seen,
+            "Posts should be ordered by number of matching tags (descending). Found post with {} matches after seeing {} matches. Post tags: {post_tag_labels:?}",
+            matching_count,
+            max_matches_seen
+        );
+
+        // Update the maximum matches seen
+        max_matches_seen = matching_count;
     }
 
     Ok(())
