@@ -86,7 +86,7 @@ impl NexusWatcher {
         let ev_processor_runner = EventProcessorRunner::from_config(&config, shutdown_rx.clone());
         let ev_processor_runner = Arc::new(ev_processor_runner);
 
-        // Thread 1: Default homeserver processing
+        // Task 1: Default homeserver processing
         let default_hs_handle = {
             let runner = ev_processor_runner.clone();
             let mut shutdown = shutdown_rx.clone();
@@ -110,7 +110,7 @@ impl NexusWatcher {
             })
         };
 
-        // Thread 2: Other homeservers processing
+        // Task 2: Other homeservers processing
         let other_hs_handle = {
             let runner = ev_processor_runner.clone();
             let mut shutdown = shutdown_rx.clone();
@@ -134,7 +134,7 @@ impl NexusWatcher {
             })
         };
 
-        // Thread 3: Reserved for future use
+        // Task 3: Reserved for future use
         let reserved_handle = {
             let mut shutdown = shutdown_rx.clone();
             tokio::spawn(async move {

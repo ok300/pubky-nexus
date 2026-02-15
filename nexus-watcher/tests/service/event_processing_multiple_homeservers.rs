@@ -38,7 +38,7 @@ async fn test_multiple_homeserver_event_processing() -> Result<()> {
 
     let runner = MockEventProcessorRunner::new(event_processor_list, 4, shutdown_rx);
 
-    // run_all excludes the default homeserver (the first one), so only 3 are processed
+    // run_all excludes the default homeserver (the first one), so 3 are processed (2 success + 1 error)
     let stats = runner.run_all().await.unwrap().0;
     assert_eq!(stats.count_ok(), 2);
     assert_eq!(stats.count_error(), 1);
