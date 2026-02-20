@@ -29,8 +29,8 @@ impl VariantProcessor for VideoProcessor {
         vec![FileVariant::Main]
     }
 
-    fn get_content_type_for_variant(_file: &FileDetails, _variant: &FileVariant) -> String {
-        String::from("video/mp4")
+    fn get_content_type_for_variant(file: &FileDetails, _variant: &FileVariant) -> String {
+        file.content_type.clone()
     }
 
     fn get_options_for_variant(
@@ -78,6 +78,46 @@ impl VariantProcessor for VideoProcessor {
             )
             .into())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::file::FileDetails;
+
+    fn make_file_details(content_type: &str) -> FileDetails {
+        FileDetails {
+            content_type: content_type.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_get_content_type_for_variant_mp4() {
+        let file = make_file_details("video/mp4");
+        assert_eq!(
+            VideoProcessor::get_content_type_for_variant(&file, &FileVariant::Main),
+            "video/mp4"
+        );
+    }
+
+    #[test]
+    fn test_get_content_type_for_variant_webm() {
+        let file = make_file_details("video/webm");
+        assert_eq!(
+            VideoProcessor::get_content_type_for_variant(&file, &FileVariant::Main),
+            "video/webm"
+        );
+    }
+
+    #[test]
+    fn test_get_content_type_for_variant_quicktime() {
+        let file = make_file_details("video/quicktime");
+        assert_eq!(
+            VideoProcessor::get_content_type_for_variant(&file, &FileVariant::Main),
+            "video/quicktime"
+        );
     }
 }
 
