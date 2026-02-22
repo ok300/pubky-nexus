@@ -1,6 +1,9 @@
+use axum::http::header::InvalidHeaderValue;
+use axum::http::uri::InvalidUri;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use nexus_common::types::DynError;
+use std::io;
 use thiserror::Error;
 use tracing::error;
 
@@ -10,12 +13,10 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum Error {
     #[error("User not found: {user_id}")]
     UserNotFound { user_id: String },
-    #[error("Stream is empty: {message}")]
-    EmptyStream { message: String },
     #[error("Post not found: {author_id} {post_id}")]
     PostNotFound { author_id: String, post_id: String },
     #[error("Internal server error: {source}")]
-    InternalServerError { source: Box<dyn std::error::Error> },
+    InternalServerError { source: DynError },
     #[error("Bookmarks not found: {user_id}")]
     BookmarksNotFound { user_id: String },
     #[error("Tags not found")]
@@ -30,13 +31,39 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn internal(source: DynError) -> Self {
-        Error::InternalServerError { source }
-    }
-
     pub fn invalid_input(message: &str) -> Self {
         Error::InvalidInput {
             message: message.to_string(),
+        }
+    }
+}
+
+impl From<DynError> for Error {
+    fn from(source: DynError) -> Self {
+        Error::InternalServerError { source }
+    }
+}
+
+impl From<InvalidHeaderValue> for Error {
+    fn from(source: InvalidHeaderValue) -> Self {
+        Error::InternalServerError {
+            source: Box::new(source),
+        }
+    }
+}
+
+impl From<InvalidUri> for Error {
+    fn from(source: InvalidUri) -> Self {
+        Error::InternalServerError {
+            source: Box::new(source),
+        }
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(source: io::Error) -> Self {
+        Error::InternalServerError {
+            source: Box::new(source),
         }
     }
 }
@@ -47,7 +74,6 @@ impl IntoResponse for Error {
         let status_code = match self {
             Error::UserNotFound { .. } => StatusCode::NOT_FOUND,
             Error::PostNotFound { .. } => StatusCode::NOT_FOUND,
-            Error::EmptyStream { .. } => StatusCode::NO_CONTENT,
             Error::FileNotFound { .. } => StatusCode::NOT_FOUND,
             Error::BookmarksNotFound { .. } => StatusCode::NOT_FOUND,
             Error::TagsNotFound { .. } => StatusCode::NOT_FOUND,
@@ -63,7 +89,6 @@ impl IntoResponse for Error {
             Error::PostNotFound { author_id, post_id } => {
                 error!("Post not found: {} {}", author_id, post_id)
             }
-            Error::EmptyStream { message } => error!("Empty stream: {}", message),
             Error::FileNotFound {} => {
                 error!("File not found.")
             }
@@ -81,11 +106,6 @@ impl IntoResponse for Error {
             }
             Error::InternalServerError { source } => error!("Internal server error: {:?}", source),
         };
-
-        // Handle NO_CONTENT status code with an empty body
-        if status_code == StatusCode::NO_CONTENT {
-            return (status_code, ()).into_response();
-        }
 
         let body = serde_json::json!({
             "error": self.to_string()

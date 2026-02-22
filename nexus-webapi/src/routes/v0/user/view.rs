@@ -5,7 +5,7 @@ use axum::Json;
 use nexus_common::models::tag::TagDetails;
 use nexus_common::models::user::UserView;
 use serde::Deserialize;
-use tracing::info;
+use tracing::debug;
 use utoipa::OpenApi;
 
 #[derive(Deserialize)]
@@ -34,15 +34,14 @@ pub async fn user_view_handler(
     Path(user_id): Path<String>,
     Query(query): Query<ProfileQuery>,
 ) -> Result<Json<UserView>> {
-    info!(
+    debug!(
         "GET {USER_ROUTE} user_id:{}, viewer_id:{:?}, depth: {:?}",
         user_id, query.viewer_id, query.depth
     );
 
-    match UserView::get_by_id(&user_id, query.viewer_id.as_deref(), query.depth).await {
-        Ok(Some(user)) => Ok(Json(user)),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match UserView::get_by_id(&user_id, query.viewer_id.as_deref(), query.depth).await? {
+        Some(user) => Ok(Json(user)),
+        None => Err(Error::UserNotFound { user_id }),
     }
 }
 

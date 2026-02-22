@@ -1,15 +1,16 @@
 use std::collections::HashSet;
 
-use super::{Influencers, Muted, UserCounts, UserSearch, UserView};
+use super::{
+    Influencers, Muted, UserCounts, UserDetails, UserSearch, UserView, USER_DELETED_SENTINEL,
+};
 
-use crate::db::kv::SortOrder;
+use crate::db::kv::{sets, RedisResult, SortOrder};
 use crate::db::{fetch_all_rows_from_graph, queries, RedisOps};
 use crate::models::follow::{Followers, Following, Friends, UserFollows};
 use crate::models::post::{PostStream, POST_REPLIES_PER_POST_KEY_PARTS};
 use crate::types::{DynError, StreamReach, Timeframe};
 
 use serde::{Deserialize, Serialize};
-use tokio::task::spawn;
 use utoipa::ToSchema;
 
 pub const USER_MOSTFOLLOWED_KEY_PARTS: [&str; 2] = ["Users", "MostFollowed"];
@@ -41,6 +42,19 @@ pub struct UserStreamInput {
     pub preview: Option<bool>,
     pub author_id: Option<String>,
     pub post_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, ToSchema, Debug, Default, Clone)]
+pub struct UserIdStream(pub Vec<String>);
+
+impl UserIdStream {
+    pub fn new(user_ids: Vec<String>) -> Self {
+        Self(user_ids)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Default, Debug)]
@@ -86,28 +100,13 @@ impl UserStream {
         viewer_id: Option<&str>,
         depth: Option<u8>,
     ) -> Result<Option<Self>, DynError> {
-        // TODO: potentially we could use a new redis_com.mget() with a single call to retrieve all
-        // user details at once and build the user profiles on the fly.
-        // But still, using tokio to create them concurrently has VERY high performance.
-        let viewer_id = viewer_id.map(|id| id.to_string());
-        let mut handles = Vec::with_capacity(user_ids.len());
-
-        for user_id in user_ids {
-            let user_id = user_id.clone();
-            let viewer_id = viewer_id.clone();
-            let handle =
-                spawn(
-                    async move { UserView::get_by_id(&user_id, viewer_id.as_deref(), depth).await },
-                );
-            handles.push(handle);
-        }
+        // Use the new mget batch operation to retrieve all user views efficiently
+        let user_views_result = UserView::get_by_ids(user_ids, viewer_id, depth).await?;
 
         let mut user_views = Vec::with_capacity(user_ids.len());
 
-        for handle in handles {
-            if let Some(user_view) = handle.await?? {
-                user_views.push(user_view);
-            }
+        for view in user_views_result.into_iter().flatten() {
+            user_views.push(view);
         }
 
         match user_views.is_empty() {
@@ -120,7 +119,7 @@ impl UserStream {
     pub async fn add_to_most_followed_sorted_set(
         user_id: &str,
         counts: &UserCounts,
-    ) -> Result<(), DynError> {
+    ) -> RedisResult<()> {
         Self::put_index_sorted_set(
             &USER_MOSTFOLLOWED_KEY_PARTS,
             &[(counts.followers as f64, user_id)],
@@ -134,7 +133,7 @@ impl UserStream {
     pub async fn add_to_influencers_sorted_set(
         user_id: &str,
         counts: &UserCounts,
-    ) -> Result<(), DynError> {
+    ) -> RedisResult<()> {
         let score = (counts.tagged + counts.posts) as f64 * (counts.followers as f64).sqrt();
         Self::put_index_sorted_set(&USER_INFLUENCERS_KEY_PARTS, &[(score, user_id)], None, None)
             .await
@@ -147,8 +146,29 @@ impl UserStream {
         let count = limit.unwrap_or(5) as isize;
 
         // Attempt to get cached data from Redis
-        if let Some(cached_data) = Self::try_get_cached_recommended(user_id, count).await? {
-            return Ok(Some(cached_data));
+        if let Some(cached_ids) = Self::try_get_cached_recommended(user_id, count).await? {
+            // Filter out deleted users from cached IDs
+            let details_list = UserDetails::mget(&cached_ids).await?;
+
+            // Collect both filtered IDs and deleted IDs in one pass
+            let mut filtered_ids: Vec<String> = Vec::new();
+            let mut deleted_ids: Vec<String> = Vec::new();
+
+            for (id, details) in cached_ids.into_iter().zip(details_list.into_iter()) {
+                match details {
+                    Some(ref d) if d.name != USER_DELETED_SENTINEL => filtered_ids.push(id),
+                    _ => deleted_ids.push(id),
+                }
+            }
+
+            // Remove deleted users from the cache set to improve cache quality
+            Self::remove_from_cached_recommended(user_id, &deleted_ids).await;
+
+            return Ok(if filtered_ids.is_empty() {
+                None
+            } else {
+                Some(filtered_ids)
+            });
         }
 
         // Cache miss; proceed to query Neo4j
@@ -162,7 +182,7 @@ impl UserStream {
             let maybe_rec_user_name = row.get::<Option<String>>("recommended_user_name")?;
 
             if let (Some(user_id), Some(user_name)) = (maybe_rec_user_id, maybe_rec_user_name) {
-                if user_name != "[DELETED]" {
+                if user_name != USER_DELETED_SENTINEL {
                     user_ids.push(user_id);
                 }
             }
@@ -183,13 +203,14 @@ impl UserStream {
         user_id: &str,
         count: isize,
     ) -> Result<Option<Vec<String>>, DynError> {
-        let key_parts = &["Cache", "Recommended", user_id];
+        let key_parts = &[user_id];
         Self::try_get_random_from_index_set(
             key_parts,
             count,
             Some(CACHE_USER_RECOMMENDED_KEY_PARTS.join(":")),
         )
         .await
+        .map_err(Into::into)
     }
 
     /// Helper method to cache recommended users in Redis with a TTL.
@@ -203,6 +224,20 @@ impl UserStream {
             Some(CACHE_USER_RECOMMENDED_KEY_PARTS.join(":")),
         )
         .await
+        .map_err(Into::into)
+    }
+
+    /// Helper method to remove deleted users from the cached recommendations.
+    /// This improves cache quality by evicting stale entries instead of just filtering them at read time.
+    async fn remove_from_cached_recommended(user_id: &str, deleted_ids: &[String]) {
+        if deleted_ids.is_empty() {
+            return;
+        }
+
+        let prefix = CACHE_USER_RECOMMENDED_KEY_PARTS.join(":");
+        let deleted_refs: Vec<&str> = deleted_ids.iter().map(|s| s.as_str()).collect();
+
+        let _ = sets::del(&prefix, user_id, &deleted_refs).await;
     }
 
     async fn get_post_replies_ids(

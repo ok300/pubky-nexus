@@ -1,8 +1,8 @@
 use crate::db::exec_single_row;
 use crate::db::fetch_key_from_graph;
+use crate::db::kv::RedisResult;
 use crate::db::queries;
-use crate::db::PubkyClient;
-use crate::db::RedisOps;
+use crate::db::{PubkyConnector, RedisOps};
 use crate::models::user::UserDetails;
 use crate::types::DynError;
 
@@ -34,11 +34,13 @@ impl Homeserver {
     }
 
     /// Creates a new homeserver instance with the specified cursor
-    pub fn from_cursor<T: Into<String>>(id: PubkyId, cursor: T) -> Self {
-        Homeserver {
-            id,
-            cursor: cursor.into(),
+    pub fn try_from_cursor<T: Into<String>>(id: PubkyId, cursor: T) -> Result<Self, DynError> {
+        let cursor = cursor.into();
+        if cursor.is_empty() {
+            return Err("Cannot create a homeserver from an empty cursor".into());
         }
+
+        Ok(Homeserver { id, cursor })
     }
 
     /// Stores this homeserver in the graph.
@@ -60,13 +62,18 @@ impl Homeserver {
     }
 
     /// Retrieves the homeserver from Redis.
-    pub async fn get_from_index(id: &str) -> Result<Option<Self>, DynError> {
+    pub async fn get_from_index(id: &str) -> RedisResult<Option<Self>> {
         Self::try_from_index_json(&[id], None).await
     }
 
     /// Stores this homeserver in Redis.
     pub async fn put_to_index(&self) -> Result<(), DynError> {
-        self.put_index_json(&[&self.id], None, None).await
+        if self.cursor.is_empty() {
+            return Err("Cannot save to index a homeserver with an empty cursor".into());
+        }
+        self.put_index_json(&[&self.id], None, None)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn get_by_id(homeserver_id: PubkyId) -> Result<Option<Homeserver>, DynError> {
@@ -82,9 +89,9 @@ impl Homeserver {
         }
     }
 
-    /// Verifies if homeserver exists, or persists it if missing
+    /// Verifies if homeserver exists in the graph, or persists it if missing
     pub async fn persist_if_unknown(homeserver_id: PubkyId) -> Result<(), DynError> {
-        if Self::get_by_id(homeserver_id.clone()).await?.is_none() {
+        if Self::get_from_graph(&homeserver_id).await?.is_none() {
             info!("Persisting new homeserver: {homeserver_id}");
             let homeserver = Homeserver::new(homeserver_id);
             homeserver.put_to_graph().await?;
@@ -117,9 +124,8 @@ impl Homeserver {
     /// ### Arguments
     ///
     /// - `referenced_post_uri`: The parent post (if current post is a reply to it), or a reposted post (if current post is a Repost)
-    pub async fn maybe_ingest_for_post(referenced_post_uri: &str) -> Result<(), DynError> {
-        let parsed_post_uri = ParsedUri::try_from(referenced_post_uri)?;
-        let ref_post_author_id = parsed_post_uri.user_id.as_str();
+    pub async fn maybe_ingest_for_post(referenced_post_uri: &ParsedUri) -> Result<(), DynError> {
+        let ref_post_author_id = referenced_post_uri.user_id.as_str();
 
         Self::maybe_ingest_for_user(ref_post_author_id).await
     }
@@ -130,7 +136,7 @@ impl Homeserver {
     ///
     /// - `referenced_user_id`: The URI of the referenced user
     pub async fn maybe_ingest_for_user(referenced_user_id: &str) -> Result<(), DynError> {
-        let pubky_client = PubkyClient::get()?;
+        let pubky = PubkyConnector::get()?;
 
         if UserDetails::get_by_id(referenced_user_id).await?.is_some() {
             tracing::debug!(
@@ -140,13 +146,12 @@ impl Homeserver {
         }
 
         let ref_post_author_pk = referenced_user_id.parse::<PublicKey>()?;
-        let Some(ref_post_author_hs) = pubky_client.get_homeserver(&ref_post_author_pk).await
-        else {
+        let Some(ref_post_author_hs) = pubky.get_homeserver_of(&ref_post_author_pk).await else {
             tracing::warn!("Skipping homeserver ingestion: author {ref_post_author_pk} has no published homeserver");
             return Ok(());
         };
 
-        let hs_pk = PubkyId::try_from(&ref_post_author_hs)?;
+        let hs_pk = PubkyId::from(ref_post_author_hs.into_inner());
         Self::persist_if_unknown(hs_pk.clone())
             .await
             .inspect(|_| tracing::info!("Ingested homeserver {hs_pk}"))

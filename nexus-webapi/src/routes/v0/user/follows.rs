@@ -6,7 +6,7 @@ use axum::extract::{Path, Query};
 use axum::Json;
 use nexus_common::models::follow::{Followers, Following, Friends, UserFollows};
 use nexus_common::types::Pagination;
-use tracing::info;
+use tracing::debug;
 use utoipa::OpenApi;
 
 #[utoipa::path(
@@ -29,15 +29,14 @@ pub async fn user_followers_handler(
     Path(user_id): Path<String>,
     Query(query): Query<Pagination>,
 ) -> Result<Json<Followers>> {
-    info!("GET {USER_FOLLOWERS_ROUTE} user_id:{}", user_id);
+    debug!("GET {USER_FOLLOWERS_ROUTE} user_id:{}", user_id);
 
     let skip = query.skip.unwrap_or(0);
     let limit = query.limit.unwrap_or(200);
 
-    match Followers::get_by_id(&user_id, Some(skip), Some(limit)).await {
-        Ok(Some(followers)) => Ok(Json(followers)),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match Followers::get_by_id(&user_id, Some(skip), Some(limit)).await? {
+        Some(followers) => Ok(Json(followers)),
+        None => Err(Error::UserNotFound { user_id }),
     }
 }
 
@@ -61,15 +60,14 @@ pub async fn user_following_handler(
     Path(user_id): Path<String>,
     Query(query): Query<Pagination>,
 ) -> Result<Json<Following>> {
-    info!("GET {USER_FOLLOWING_ROUTE} user_id:{}", user_id);
+    debug!("GET {USER_FOLLOWING_ROUTE} user_id:{}", user_id);
 
     let skip = query.skip.unwrap_or(0);
     let limit = query.limit.unwrap_or(200);
 
-    match Following::get_by_id(&user_id, Some(skip), Some(limit)).await {
-        Ok(Some(following)) => Ok(Json(following)),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match Following::get_by_id(&user_id, Some(skip), Some(limit)).await? {
+        Some(following) => Ok(Json(following)),
+        None => Err(Error::UserNotFound { user_id }),
     }
 }
 
@@ -93,15 +91,14 @@ pub async fn user_friends_handler(
     Path(user_id): Path<String>,
     Query(query): Query<Pagination>,
 ) -> Result<Json<Friends>> {
-    info!("GET {USER_FRIENDS_ROUTE} user_id:{}", user_id);
+    debug!("GET {USER_FRIENDS_ROUTE} user_id:{}", user_id);
 
     let skip = query.skip.unwrap_or(0);
     let limit = query.limit.unwrap_or(200);
 
-    match Friends::get_by_id(&user_id, Some(skip), Some(limit)).await {
-        Ok(Some(friends)) => Ok(Json(friends)),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match Friends::get_by_id(&user_id, Some(skip), Some(limit)).await? {
+        Some(friends) => Ok(Json(friends)),
+        None => Err(Error::UserNotFound { user_id }),
     }
 }
 

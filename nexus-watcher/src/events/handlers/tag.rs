@@ -1,8 +1,8 @@
-use crate::events::errors::EventProcessorError;
 use crate::events::retry::event::RetryEvent;
+use crate::events::EventProcessorError;
 use crate::handle_indexing_results;
 use chrono::Utc;
-use nexus_common::db::kv::{JsonAction, ScoreAction};
+use nexus_common::db::kv::ScoreAction;
 use nexus_common::db::OperationOutcome;
 use nexus_common::models::homeserver::Homeserver;
 use nexus_common::models::notification::Notification;
@@ -13,8 +13,8 @@ use nexus_common::models::tag::search::TagSearch;
 use nexus_common::models::tag::traits::{TagCollection, TaggersCollection};
 use nexus_common::models::tag::user::TagUser;
 use nexus_common::models::user::UserCounts;
-use nexus_common::types::DynError;
-use pubky_app_specs::{user_uri_builder, ParsedUri, PubkyAppTag, PubkyId, Resource};
+use nexus_common::types::{DynError, Pagination};
+use pubky_app_specs::{ParsedUri, PubkyAppTag, PubkyId, Resource};
 use tracing::debug;
 
 use super::utils::post_relationships_is_reply;
@@ -81,8 +81,10 @@ async fn put_sync_post(
         OperationOutcome::MissingDependency => {
             // Ensure that dependencies follow the same format as the RetryManager keys
             let dependency = vec![format!("{author_id}:posts:{post_id}")];
-            if let Err(e) = Homeserver::maybe_ingest_for_post(post_uri).await {
-                tracing::error!("Failed to ingest homeserver: {e}");
+            if let Ok(referenced_post_uri) = ParsedUri::try_from(post_uri) {
+                if let Err(e) = Homeserver::maybe_ingest_for_post(&referenced_post_uri).await {
+                    tracing::error!("Failed to ingest homeserver: {e}");
+                }
             }
             Err(EventProcessorError::MissingDependency { dependency }.into())
         }
@@ -93,22 +95,16 @@ async fn put_sync_post(
 
             let indexing_results = tokio::join!(
                 // Update user counts for tagger
-                UserCounts::update(&tagger_user_id, "tagged", JsonAction::Increment(1), None),
+                UserCounts::increment(&tagger_user_id, "tagged", None),
                 // Increment in one the post tags
-                PostCounts::update_index_field(
-                    post_key_slice,
-                    "tags",
-                    JsonAction::Increment(1),
-                    None
-                ),
+                PostCounts::increment_index_field(post_key_slice, "tags", None),
                 async {
                     // Increase unique_tags if the tag does not exist already
                     // NOTE: To update that field, it cannot exist in TagPost SORTED SET the tag. Thats why it has to be executed
                     // before TagPost operation
-                    PostCounts::update_index_field(
+                    PostCounts::increment_index_field(
                         post_key_slice,
                         "unique_tags",
-                        JsonAction::Increment(1),
                         Some(tag_label),
                     )
                     .await?;
@@ -129,7 +125,7 @@ async fn put_sync_post(
                     &author_id,
                     post_id,
                     tag_label,
-                    ScoreAction::Increment(1.0)
+                    ScoreAction::Increment(1.0),
                 ),
                 async {
                     // Post replies cannot be included in the total engagement index once they have been tagged
@@ -148,6 +144,7 @@ async fn put_sync_post(
                 PostsByTagSearch::put_to_index(&author_id, post_id, tag_label),
                 // Save new notification
                 Notification::new_post_tag(&tagger_user_id, &author_id, tag_label, post_uri),
+                // Add tag to search index
                 TagSearch::put_to_index(tag_label_slice)
             );
 
@@ -158,9 +155,9 @@ async fn put_sync_post(
                 indexing_results.3,
                 indexing_results.4,
                 indexing_results.5,
-                indexing_results.6,
+                indexing_results.6.map_err(DynError::from),
                 indexing_results.7,
-                indexing_results.8
+                indexing_results.8.map_err(DynError::from)
             );
 
             Ok(())
@@ -195,17 +192,13 @@ async fn put_sync_user(
     {
         OperationOutcome::Updated => Ok(()),
         OperationOutcome::MissingDependency => {
-            match RetryEvent::generate_index_key(&user_uri_builder(tagged_user_id.to_string())) {
-                Some(key) => {
-                    let dependency = vec![key];
-                    if let Err(e) = Homeserver::maybe_ingest_for_user(tagged_user_id.as_str()).await
-                    {
-                        tracing::error!("Failed to ingest homeserver: {e}");
-                    }
-                    Err(EventProcessorError::MissingDependency { dependency }.into())
-                }
-                None => Err("Could not generate missing dependency key".into()),
+            if let Err(e) = Homeserver::maybe_ingest_for_user(tagged_user_id.as_str()).await {
+                tracing::error!("Failed to ingest homeserver: {e}");
             }
+
+            let key = RetryEvent::generate_index_key_from_uri(&tagged_user_id.to_uri());
+            let dependency = vec![key];
+            Err(EventProcessorError::MissingDependency { dependency }.into())
         }
         OperationOutcome::CreatedOrDeleted => {
             let tag_label_slice = &[tag_label.to_string()];
@@ -213,20 +206,14 @@ async fn put_sync_user(
             // SAVE TO INDEX
             let indexing_results = tokio::join!(
                 // Update user counts for the tagged user
-                UserCounts::update(&tagged_user_id, "tags", JsonAction::Increment(1), None),
+                UserCounts::increment(&tagged_user_id, "tags", None),
                 // Update user counts for the tagger user
-                UserCounts::update(&tagger_user_id, "tagged", JsonAction::Increment(1), None),
+                UserCounts::increment(&tagger_user_id, "tagged", None),
                 async {
                     // Increase unique_tags if the tag does not exist already
                     // NOTE: To update that field, it cannot exist in TagUser SORTED SET the tag. Thats why it has to be executed
                     // before TagUser operation
-                    UserCounts::update(
-                        &tagged_user_id,
-                        "unique_tags",
-                        JsonAction::Increment(1),
-                        Some(tag_label),
-                    )
-                    .await?;
+                    UserCounts::increment(&tagged_user_id, "unique_tags", Some(tag_label)).await?;
                     // Add label count to the user profile tag
                     TagUser::update_index_score(
                         &tagged_user_id,
@@ -241,6 +228,7 @@ async fn put_sync_user(
                 TagUser::add_tagger_to_index(&tagged_user_id, None, &tagger_user_id, tag_label),
                 // Save new notification
                 Notification::new_user_tag(&tagger_user_id, &tagged_user_id, tag_label),
+                // Add tag to search index
                 TagSearch::put_to_index(tag_label_slice)
             );
 
@@ -250,7 +238,7 @@ async fn put_sync_user(
                 indexing_results.2,
                 indexing_results.3,
                 indexing_results.4,
-                indexing_results.5
+                indexing_results.5.map_err(DynError::from)
             );
 
             Ok(())
@@ -290,22 +278,16 @@ async fn del_sync_user(
 ) -> Result<(), DynError> {
     let indexing_results = tokio::join!(
         // Update user counts in the tagged
-        UserCounts::update(tagged_id, "tags", JsonAction::Decrement(1), None),
+        UserCounts::decrement(tagged_id, "tags", None),
         // Update user counts in the tagger
-        UserCounts::update(&tagger_id, "tagged", JsonAction::Decrement(1), None),
+        UserCounts::decrement(&tagger_id, "tagged", None),
         async {
             // Decrement label count to the user profile tag
             TagUser::update_index_score(tagged_id, None, tag_label, ScoreAction::Decrement(1.0))
                 .await?;
             // Decrease unique_tags
             // NOTE: To update that field, we first need to decrement the value in the TagUser SORTED SET associated with that tag
-            UserCounts::update(
-                tagged_id,
-                "unique_tags",
-                JsonAction::Decrement(1),
-                Some(tag_label),
-            )
-            .await?;
+            UserCounts::decrement(tagged_id, "unique_tags", Some(tag_label)).await?;
             Ok::<(), DynError>(())
         },
         async {
@@ -339,9 +321,9 @@ async fn del_sync_post(
 
     let indexing_results = tokio::join!(
         // Update user counts for tagger
-        UserCounts::update(&tagger_id, "tagged", JsonAction::Decrement(1), None),
+        UserCounts::decrement(&tagger_id, "tagged", None),
         // Decrement in one the post tags
-        PostCounts::update_index_field(post_key_slice, "tags", JsonAction::Decrement(1), None),
+        PostCounts::decrement_index_field(post_key_slice, "tags", None),
         async {
             // Decrement label score in the post
             TagPost::update_index_score(
@@ -353,13 +335,8 @@ async fn del_sync_post(
             .await?;
             // Decrease unique_tag
             // NOTE: To update that field, we first need to decrement the value in the SORTED SET associated with that tag
-            PostCounts::update_index_field(
-                post_key_slice,
-                "unique_tags",
-                JsonAction::Decrement(1),
-                Some(tag_label),
-            )
-            .await?;
+            PostCounts::decrement_index_field(post_key_slice, "unique_tags", Some(tag_label))
+                .await?;
             Ok::<(), DynError>(())
         },
         // Decrease post from label total engagement
@@ -367,7 +344,7 @@ async fn del_sync_post(
             author_id,
             post_id,
             tag_label,
-            ScoreAction::Decrement(1.0)
+            ScoreAction::Decrement(1.0),
         ),
         async {
             // Post replies cannot be included in the total engagement index once the tag have been deleted
@@ -386,6 +363,15 @@ async fn del_sync_post(
             // NOTE: The tag search index, depends on the post taggers collection to delete
             // Delete post from global label timeline
             PostsByTagSearch::del_from_index(author_id, post_id, tag_label).await?;
+
+            let posts_by_tag =
+                PostsByTagSearch::get_by_label(tag_label, None, Pagination::default()).await?;
+            let posts_by_tag_found = posts_by_tag.is_some_and(|x| !x.is_empty());
+            if !posts_by_tag_found {
+                // If we just removed the last post using this tag, remove tag from autocomplete suggestion list
+                TagSearch::del_from_index(tag_label).await?;
+            }
+
             Ok::<(), DynError>(())
         }
     );

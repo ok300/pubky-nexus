@@ -1,3 +1,4 @@
+use crate::db::kv::RedisResult;
 use crate::db::DbError;
 use crate::db::{exec_single_row, queries, RedisOps};
 use crate::media::FileVariant;
@@ -101,7 +102,7 @@ impl Collection<&[&str]> for FileDetails {
         queries::put::create_file(self)
     }
 
-    async fn extend_on_index_miss(_: &[std::option::Option<Self>]) -> Result<(), DynError> {
+    async fn extend_on_index_miss(_: &[std::option::Option<Self>]) -> RedisResult<()> {
         Ok(())
     }
 }
@@ -154,12 +155,12 @@ impl FileDetails {
         Ok(())
     }
 
-    pub fn file_key_from_uri(uri: &str) -> Vec<String> {
-        let parsed_uri = ParsedUri::try_from(uri).unwrap_or_default();
+    pub fn file_key_from_uri(uri: &str) -> Option<(String, String)> {
+        let parsed_uri = ParsedUri::try_from(uri).ok()?;
         if let Resource::File(file_id) = parsed_uri.resource {
-            vec![parsed_uri.user_id.to_string(), file_id]
+            Some((parsed_uri.user_id.to_string(), file_id))
         } else {
-            vec![parsed_uri.user_id.to_string(), String::default()]
+            None
         }
     }
 }

@@ -3,7 +3,7 @@ use crate::{Error, Result};
 use axum::extract::Path;
 use axum::Json;
 use nexus_common::models::post::PostCounts;
-use tracing::info;
+use tracing::debug;
 use utoipa::OpenApi;
 
 #[utoipa::path(
@@ -24,15 +24,11 @@ use utoipa::OpenApi;
 pub async fn post_counts_handler(
     Path((author_id, post_id)): Path<(String, String)>,
 ) -> Result<Json<PostCounts>> {
-    info!(
-        "GET {POST_COUNTS_ROUTE} author_id:{}, post_id:{}",
-        author_id, post_id
-    );
+    debug!("GET {POST_COUNTS_ROUTE} author_id:{author_id}, post_id:{post_id}");
 
-    match PostCounts::get_by_id(&author_id, &post_id).await {
-        Ok(Some(post)) => Ok(Json(post)),
-        Ok(None) => Err(Error::PostNotFound { author_id, post_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match PostCounts::get_by_id(&author_id, &post_id).await? {
+        Some(post) => Ok(Json(post)),
+        None => Err(Error::PostNotFound { author_id, post_id }),
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::db::kv::RedisResult;
 use crate::db::RedisOps;
 use crate::models::tag::Taggers;
 use crate::types::{DynError, Pagination};
@@ -28,11 +29,9 @@ where
     /// * `depth` - An optional depth parameter, used to determine the distance in WoT relationships.
     ///
     /// # Returns
-    /// A result containing an `Option<(Taggers, bool)>`:
-    /// - `Some((taggers, is_member))` where:
-    ///   - `taggers` is the retrieved list of taggers.
-    ///   - `is_member` is `true` if `viewer_id` is in the taggers list, otherwise `false`.
-    /// - `None` if no taggers are available.
+    /// A result containing `(Taggers, bool)`:
+    /// - `taggers` is the retrieved list of taggers (empty if no taggers are available).
+    /// - `is_member` is `true` if `viewer_id` is in the taggers list, otherwise `false`.
     /// - An error if the retrieval process fails.
     async fn get_tagger_by_id(
         user_id: &str,
@@ -41,7 +40,7 @@ where
         pagination: Pagination,
         viewer_id: Option<&str>,
         depth: Option<u8>,
-    ) -> Result<Option<TaggersTuple>, DynError> {
+    ) -> Result<TaggersTuple, DynError> {
         // Set default params for pagination
         let skip = pagination.skip.unwrap_or(0);
         let limit = pagination.limit.unwrap_or(40);
@@ -57,7 +56,9 @@ where
             key_parts = Self::create_label_index(user_id, extra_param, label, false);
         }
 
-        Self::get_from_index(key_parts, viewer_id, Some(skip), Some(limit), prefix).await
+        async { Self::get_from_index(key_parts, viewer_id, Some(skip), Some(limit), prefix).await }
+            .await
+            .map_err(Into::into)
     }
 
     async fn get_from_index(
@@ -66,16 +67,14 @@ where
         skip: Option<usize>,
         limit: Option<usize>,
         prefix: Option<String>,
-    ) -> Result<Option<TaggersTuple>, DynError> {
+    ) -> RedisResult<TaggersTuple> {
         let taggers = Self::try_from_index_set(&key_parts, skip, limit, prefix).await?;
-        if let Some(users) = taggers {
-            let is_member = match viewer_id {
-                Some(member) => Self::check_set_member(&key_parts, member).await?.1,
-                None => false,
-            };
-            return Ok(Some((users, is_member)));
-        }
-        Ok(None)
+        let is_member = match viewer_id {
+            Some(member) => Self::check_set_member(&key_parts, member).await?.1,
+            None => false,
+        };
+        let users = taggers.unwrap_or_default();
+        Ok((users, is_member))
     }
 
     /// Constructs an index key based on user key, an optional extra parameter and a tag label.
@@ -111,6 +110,6 @@ where
             Some(post_id) => vec![author_id, post_id, tag_label],
             None => vec![author_id, tag_label],
         };
-        self.remove_from_index_set(&key).await
+        self.remove_from_index_set(&key).await.map_err(Into::into)
     }
 }

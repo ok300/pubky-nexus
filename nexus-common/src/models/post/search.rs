@@ -1,4 +1,4 @@
-use crate::db::kv::{ScoreAction, SortOrder};
+use crate::db::kv::{RedisResult, ScoreAction, SortOrder};
 use crate::db::queries::get::{global_tags_by_post, global_tags_by_post_engagement};
 use crate::db::{fetch_all_rows_from_graph, RedisOps};
 use crate::models::post::PostDetails;
@@ -112,13 +112,10 @@ impl PostsByTagSearch {
             score_action,
         )
         .await
+        .map_err(Into::into)
     }
 
-    pub async fn put_to_index(
-        author_id: &str,
-        post_id: &str,
-        tag_label: &str,
-    ) -> Result<(), DynError> {
+    pub async fn put_to_index(author_id: &str, post_id: &str, tag_label: &str) -> RedisResult<()> {
         let post_key_slice: &[&str] = &[author_id, post_id];
         let key_parts = [&TAG_GLOBAL_POST_TIMELINE[..], &[tag_label]].concat();
         let tag_search = Self::check_sorted_set_member(None, &key_parts, post_key_slice).await?;
@@ -142,11 +139,11 @@ impl PostsByTagSearch {
         author_id: &str,
         post_id: &str,
         tag_label: &str,
-    ) -> Result<(), DynError> {
+    ) -> RedisResult<()> {
         let post_label_key = vec![author_id, post_id, tag_label];
-        let label_taggers = TagPost::get_from_index(post_label_key, None, None, None, None).await?;
+        let (taggers, _) = TagPost::get_from_index(post_label_key, None, None, None, None).await?;
         // Make sure that post does not have more taggers with that tag. Post:Taggers:user_id:post_id:label
-        if label_taggers.is_none() {
+        if taggers.is_empty() {
             let key_parts = [&TAG_GLOBAL_POST_TIMELINE[..], &[tag_label]].concat();
             let post_key = format!("{author_id}:{post_id}");
             Self::remove_from_index_sorted_set(None, &key_parts, &[&post_key]).await?;

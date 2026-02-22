@@ -1,4 +1,5 @@
-use super::UserDetails;
+use super::{UserDetails, USER_DELETED_SENTINEL};
+use crate::db::kv::RedisResult;
 use crate::db::RedisOps;
 use crate::models::create_zero_score_tuples;
 use crate::{models::traits::Collection, types::DynError};
@@ -54,7 +55,7 @@ impl UserSearch {
         name_prefix: &str,
         skip: Option<usize>,
         limit: Option<usize>,
-    ) -> Result<Option<Vec<String>>, DynError> {
+    ) -> RedisResult<Option<Vec<String>>> {
         // Convert the username to lowercase to ensure case-insensitive search
         let name_prefix = name_prefix.to_lowercase();
 
@@ -69,7 +70,7 @@ impl UserSearch {
         id_prefix: &str,
         skip: Option<usize>,
         limit: Option<usize>,
-    ) -> Result<Option<Vec<String>>, DynError> {
+    ) -> RedisResult<Option<Vec<String>>> {
         let id_prefix = id_prefix.to_lowercase();
 
         let min = format!("[{id_prefix}"); // Inclusive range starting with "id_prefix"
@@ -83,7 +84,7 @@ impl UserSearch {
     /// - using the user ID as index
     ///
     /// This method takes a list of `UserDetails` and adds them all to the sorted set at once.
-    pub async fn put_to_index(details_list: &[&UserDetails]) -> Result<(), DynError> {
+    pub async fn put_to_index(details_list: &[&UserDetails]) -> RedisResult<()> {
         // ensure existing records are deleted
         Self::delete_existing_records(
             details_list
@@ -98,7 +99,10 @@ impl UserSearch {
         let mut pairs: Vec<String> = Vec::with_capacity(details_list.len());
         let mut ids: Vec<String> = Vec::with_capacity(details_list.len());
 
-        for details in details_list.iter().filter(|d| d.name != "[DELETED]") {
+        for details in details_list
+            .iter()
+            .filter(|d| d.name != USER_DELETED_SENTINEL)
+        {
             // Convert the username to lowercase before storing
             let username = details.name.to_lowercase();
             let user_id = &details.id;
@@ -113,7 +117,7 @@ impl UserSearch {
         Self::put_index_sorted_set(&USER_ID_KEY_PARTS, &ids_zscore_tuples, None, None).await
     }
 
-    async fn delete_existing_records(user_ids: &[&str]) -> Result<(), DynError> {
+    async fn delete_existing_records(user_ids: &[&str]) -> RedisResult<()> {
         if user_ids.is_empty() {
             return Ok(());
         }

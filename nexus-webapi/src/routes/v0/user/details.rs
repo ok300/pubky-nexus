@@ -4,7 +4,7 @@ use axum::extract::Path;
 use axum::Json;
 use nexus_common::models::user::UserDetails;
 use pubky_app_specs::{PubkyAppUserLink, PubkyId};
-use tracing::info;
+use tracing::debug;
 use utoipa::OpenApi;
 
 #[utoipa::path(
@@ -22,12 +22,11 @@ use utoipa::OpenApi;
     )
 )]
 pub async fn user_details_handler(Path(user_id): Path<String>) -> Result<Json<UserDetails>> {
-    info!("GET {USER_DETAILS_ROUTE} user_id:{}", user_id);
+    debug!("GET {USER_DETAILS_ROUTE} user_id:{}", user_id);
 
-    match UserDetails::get_by_id(&user_id).await {
-        Ok(Some(details)) => Ok(Json(details)),
-        Ok(None) => Err(Error::UserNotFound { user_id }),
-        Err(source) => Err(Error::InternalServerError { source }),
+    match UserDetails::get_by_id(&user_id).await? {
+        Some(details) => Ok(Json(details)),
+        None => Err(Error::UserNotFound { user_id }),
     }
 }
 
