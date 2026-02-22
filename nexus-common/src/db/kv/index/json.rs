@@ -254,6 +254,10 @@ pub async fn put_multiple<T: Serialize>(
     prefix: &str,
     data: &[(impl AsRef<str>, T)],
 ) -> RedisResult<()> {
+    if data.is_empty() {
+        return Ok(());
+    }
+
     let mut redis_conn = get_redis_conn().await?;
 
     // Create a pipeline-like command sequence
@@ -338,6 +342,10 @@ pub async fn get_multiple<T: DeserializeOwned + Send + Sync>(
     keys: &[impl AsRef<str>],
     path: Option<&str>,
 ) -> RedisResult<Vec<Option<T>>> {
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let mut redis_conn = get_redis_conn().await?;
     let json_path = path.unwrap_or("$");
 
@@ -424,6 +432,10 @@ pub async fn _get_bool(prefix: &str, key: &str) -> RedisResult<Option<bool>> {
 ///
 /// Returns an error if the operation fails.
 pub async fn del_multiple(prefix: &str, keys: &[impl AsRef<str>]) -> RedisResult<()> {
+    if keys.is_empty() {
+        return Ok(());
+    }
+
     let mut redis_conn = get_redis_conn().await?;
 
     // Generate full keys with prefix
