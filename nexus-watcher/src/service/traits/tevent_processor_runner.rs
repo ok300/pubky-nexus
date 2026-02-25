@@ -16,20 +16,32 @@ use crate::service::{
 ///   ready for immediate use
 /// - Implementors should ensure that created processors are properly isolated and
 ///   don't share mutable state unless explicitly intended
+///
+/// # Parallel Processing Model
+/// The runner supports parallel processing of homeservers. On each interval tick,
+/// two methods are designed to run concurrently:
+/// - [`TEventProcessorRunner::run_default`] processes only the default homeserver from the configuration
+/// - [`TEventProcessorRunner::run_all`] processes all other homeservers returned by [`TEventProcessorRunner::homeservers_by_priority`],
+///   which excludes the default homeserver
+///
+/// This parallel execution ensures the default homeserver is always processed promptly,
+/// regardless of the load from other homeservers.
 #[async_trait::async_trait]
 pub trait TEventProcessorRunner {
     /// Returns the shutdown signal receiver
     fn shutdown_rx(&self) -> Receiver<bool>;
 
     /// Returns the default homeserver ID for this runner.
-    /// This is used to prioritize the default homeserver when processing multiple homeservers.
+    /// This homeserver is processed separately via [`TEventProcessorRunner::run_default`] and is excluded
+    /// from [`TEventProcessorRunner::homeservers_by_priority`].
     fn default_homeserver(&self) -> &str;
 
     fn monitored_homeservers_limit(&self) -> usize;
 
-    /// Returns the homeserver IDs relevant for this run, ordered by their priority.
+    /// Returns the homeserver IDs relevant for [`run_all`], ordered by their priority.
     ///
-    /// Contains all homeserver IDs from the graph, with the default homeserver prioritized at index 0.
+    /// Contains all homeserver IDs from the graph, **excluding** the default homeserver.
+    /// The default homeserver is processed separately via [`run_default`].
     async fn homeservers_by_priority(&self) -> Result<Vec<String>, DynError>;
 
     /// Creates and returns a new event processor instance for the specified homeserver.
@@ -83,7 +95,9 @@ pub trait TEventProcessorRunner {
         ProcessedStats(stats)
     }
 
-    /// Runs event processors for all homeservers relevant for this run, with timeout protection.
+    /// Runs event processors for all homeservers (excluding the default) relevant for this run, with timeout protection.
+    ///
+    /// The default homeserver is processed separately via [`run_default`].
     ///
     /// # Returns
     /// Statistics about the event processor run results, summarized as [`RunAllProcessorsStats`]
@@ -115,6 +129,47 @@ pub trait TEventProcessorRunner {
 
             run_stats.add_run_result(hs_id, duration, status);
         }
+
+        let processed_stats = self.post_run_all(run_stats).await;
+        Ok(processed_stats)
+    }
+
+    /// Runs the event processor for only the default homeserver.
+    ///
+    /// This method is intended to be run in parallel with [`run_all`], which processes
+    /// all other homeservers.
+    ///
+    /// # Returns
+    /// Statistics about the event processor run result for the default homeserver.
+    async fn run_default(&self) -> Result<ProcessedStats, DynError> {
+        let default_hs_id = self.default_homeserver().to_string();
+
+        let mut run_stats = RunAllProcessorsStats::default();
+
+        if *self.shutdown_rx().borrow() {
+            info!("Shutdown detected, skipping default homeserver processing");
+            let processed_stats = self.post_run_all(run_stats).await;
+            return Ok(processed_stats);
+        }
+
+        let t0 = Instant::now();
+        let status = match self.build(default_hs_id.clone()).await {
+            Ok(event_processor) => match event_processor.run().await {
+                Ok(_) => ProcessorRunStatus::Ok,
+                Err(RunError::Internal(_)) => ProcessorRunStatus::Error,
+                Err(RunError::Panicked) => ProcessorRunStatus::Panic,
+                Err(RunError::TimedOut) => ProcessorRunStatus::Timeout,
+            },
+            Err(e) => {
+                error!(
+                    "Failed to build event processor for default homeserver: {default_hs_id}: {e}"
+                );
+                ProcessorRunStatus::FailedToBuild
+            }
+        };
+        let duration = Instant::now().duration_since(t0);
+
+        run_stats.add_run_result(default_hs_id, duration, status);
 
         let processed_stats = self.post_run_all(run_stats).await;
         Ok(processed_stats)
