@@ -1,9 +1,8 @@
 use crate::db::kv::RedisResult;
+use crate::models::error::ModelResult;
 use crate::models::follow::{Followers, UserFollows};
-use crate::models::user::Muted;
 
 use super::UserCounts;
-use crate::types::DynError;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -12,15 +11,11 @@ use utoipa::ToSchema;
 pub struct Relationship {
     pub following: bool,
     pub followed_by: bool,
-    pub muted: bool,
 }
 
 impl Relationship {
     // Retrieves user-viewer relationship
-    pub async fn get_by_id(
-        user_id: &str,
-        viewer_id: Option<&str>,
-    ) -> Result<Option<Self>, DynError> {
+    pub async fn get_by_id(user_id: &str, viewer_id: Option<&str>) -> ModelResult<Option<Self>> {
         match viewer_id {
             None => Ok(None),
             Some(v_id) => Self::get_from_index(user_id, v_id)
@@ -42,16 +37,14 @@ impl Relationship {
             return Ok(None);
         }
 
-        let (following, followed_by, muted) = tokio::try_join!(
+        let (following, followed_by) = tokio::try_join!(
             Followers::check_in_index(user_id, viewer_id),
             Followers::check_in_index(viewer_id, user_id),
-            Muted::check_in_index(viewer_id, user_id),
         )?;
 
         Ok(Some(Self {
             followed_by,
             following,
-            muted,
         }))
     }
 }
