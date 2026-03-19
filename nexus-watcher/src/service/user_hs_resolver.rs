@@ -232,8 +232,6 @@ mod tests {
 
         // Cleanup
         cleanup_test_user(user_id).await?;
-        exec_single_row(queries::del::delete_homeserver(hs_id_a)).await?;
-        exec_single_row(queries::del::delete_homeserver(hs_id_b)).await?;
 
         Ok(())
     }
@@ -257,7 +255,6 @@ mod tests {
 
         // Cleanup
         cleanup_test_user(user_id).await?;
-        exec_single_row(queries::del::delete_homeserver(hs_id)).await?;
 
         Ok(())
     }
@@ -298,8 +295,6 @@ mod tests {
         cleanup_test_user(user_a).await?;
         cleanup_test_user(user_b).await?;
         cleanup_test_user(user_c).await?;
-        exec_single_row(queries::del::delete_homeserver(hs_one)).await?;
-        exec_single_row(queries::del::delete_homeserver(hs_two)).await?;
 
         Ok(())
     }

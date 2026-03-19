@@ -90,11 +90,3 @@ pub fn delete_file(owner_id: &str, file_id: &str) -> Query {
     .param("owner_id", owner_id.to_string())
 }
 
-/// Deletes a homeserver node
-pub fn delete_homeserver(homeserver_id: &str) -> Query {
-    query(
-        "MATCH (hs:Homeserver {id: $id})
-         DETACH DELETE hs;",
-    )
-    .param("id", homeserver_id.to_string())
-}
