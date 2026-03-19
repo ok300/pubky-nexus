@@ -94,7 +94,7 @@ async fn sort_by_failures(user_ids: Vec<String>) -> Result<Vec<String>, DynError
             (id, score)
         })
         .collect();
-    pairs.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    pairs.sort_by(|(_, a), (_, b)| a.total_cmp(b));
     Ok(pairs.into_iter().map(|(id, _)| id).collect())
 }
 
