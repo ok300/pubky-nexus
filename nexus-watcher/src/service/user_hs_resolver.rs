@@ -3,12 +3,15 @@
 //! Periodic task that resolves each user's homeserver and persists
 //! the `(:User)-[:HOSTED_BY]->(:Homeserver)` relationship in Neo4j.
 //!
-//! On resolution failure the task increments a per-user
-//! `consecutive_failed_hs_lookups` counter in Redis and skips to the next user.
+//! On resolution failure the task increments a per-user failure counter
+//! (stored as a score in the `Sorted:Users:HsResolutionFailures` Redis
+//! Sorted Set) and skips to the next user.
 //! Users with more failures are processed last so that healthy users are
 //! resolved first.
 
-use nexus_common::db::kv::RedisResult;
+use std::collections::HashMap;
+
+use nexus_common::db::kv::{RedisResult, SortOrder};
 use nexus_common::db::{exec_single_row, fetch_key_from_graph, queries, PubkyConnector, RedisOps};
 use nexus_common::types::DynError;
 
@@ -18,37 +21,37 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, warn};
 
 // ---------------------------------------------------------------------------
-// Redis model for the per-user failure counter
+// Redis Sorted Set for the per-user failure counter
 // ---------------------------------------------------------------------------
 
-/// Tracks consecutive failed homeserver lookups for a user.
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub struct UserHsFailures {
-    pub consecutive_failed_hs_lookups: u64,
-}
+const USER_HS_FAILURES_KEY_PARTS: [&str; 2] = ["Users", "HsResolutionFailures"];
+
+/// Tracks consecutive failed homeserver lookups for users via a Redis Sorted Set.
+///
+/// The sorted set key is `Sorted:Users:HsResolutionFailures`, with each user PK
+/// as a member and the failure count as the score.
+#[derive(Serialize, Deserialize)]
+pub struct UserHsFailures;
 
 impl RedisOps for UserHsFailures {}
 
 impl UserHsFailures {
     /// Reads the failure count for a user (returns 0 when absent).
     async fn get(user_id: &str) -> Result<u64, DynError> {
-        let maybe: Option<Self> = Self::try_from_index_json(&[user_id], None).await?;
-        Ok(maybe.map_or(0, |f| f.consecutive_failed_hs_lookups))
+        let score =
+            Self::check_sorted_set_member(None, &USER_HS_FAILURES_KEY_PARTS, &[user_id]).await?;
+        Ok(score.map_or(0, |s| s as u64))
     }
 
     /// Increments the failure counter by 1.
     async fn increment(user_id: &str) -> Result<(), DynError> {
-        let current = Self::get(user_id).await?;
-        let updated = UserHsFailures {
-            consecutive_failed_hs_lookups: current + 1,
-        };
-        updated.put_index_json(&[user_id], None, None).await?;
+        Self::increment_score_index_sorted_set(&USER_HS_FAILURES_KEY_PARTS, &[user_id]).await?;
         Ok(())
     }
 
     /// Removes the failure counter (called on success).
     async fn remove(user_id: &str) -> RedisResult<()> {
-        Self::remove_from_index_multiple_json(&[&[user_id]]).await
+        Self::remove_from_index_sorted_set(None, &USER_HS_FAILURES_KEY_PARTS, &[user_id]).await
     }
 }
 
@@ -64,14 +67,34 @@ async fn get_all_user_ids() -> Result<Vec<String>, DynError> {
 }
 
 /// Sorts user IDs by their failure count (ascending — fewest failures first).
-/// Uses a single batched Redis call to fetch all failure counts.
+/// Fetches all failure scores from the sorted set in a single Redis call.
 async fn sort_by_failures(user_ids: Vec<String>) -> Result<Vec<String>, DynError> {
-    let key_parts: Vec<[&str; 1]> = user_ids.iter().map(|id| [id.as_str()]).collect();
-    let key_parts_refs: Vec<&[&str]> = key_parts.iter().map(|k| k.as_slice()).collect();
-    let failures = UserHsFailures::try_from_index_multiple_json(&key_parts_refs).await?;
+    let failures = UserHsFailures::try_from_index_sorted_set(
+        &USER_HS_FAILURES_KEY_PARTS,
+        None,
+        None,
+        None,
+        None,
+        SortOrder::Ascending,
+        None,
+    )
+    .await?;
 
-    let mut pairs: Vec<_> = user_ids.into_iter().zip(failures).collect();
-    pairs.sort_by_key(|(_, f)| f.as_ref().map_or(0, |f| f.consecutive_failed_hs_lookups));
+    // Build a lookup map: user_id -> failure_count
+    let failure_map: HashMap<String, f64> = failures
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
+    // Sort user_ids by their failure count (0 for users not in the set)
+    let mut pairs: Vec<_> = user_ids
+        .into_iter()
+        .map(|id| {
+            let score = failure_map.get(&id).copied().unwrap_or(0.0);
+            (id, score)
+        })
+        .collect();
+    pairs.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     Ok(pairs.into_iter().map(|(id, _)| id).collect())
 }
 
