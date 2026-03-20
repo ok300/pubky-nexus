@@ -83,20 +83,21 @@ async fn get_all_user_ids() -> GraphResult<Vec<String>> {
 }
 
 /// Sorts user IDs by their failure count (ascending — fewest failures first).
-/// Returns `(user_id, failure_count)` pairs.
-async fn sort_by_failures(user_ids: Vec<String>) -> RedisResult<Vec<(String, u64)>> {
+/// Ties are broken by `user_id` ascending for deterministic ordering.
+/// Returns `(user_id, failure_score)` pairs.
+async fn sort_by_failures(user_ids: Vec<String>) -> RedisResult<Vec<(String, f64)>> {
     let failure_map = UserHsFailures::get_all().await?;
 
-    let mut sorted_users: Vec<(String, u64)> = user_ids
+    let mut sorted_users: Vec<(String, f64)> = user_ids
         .into_iter()
         .map(|user_id| {
-            let score = failure_map.get(&user_id).copied().unwrap_or(0.0) as u64;
+            let score = failure_map.get(&user_id).copied().unwrap_or(0.0);
             (user_id, score)
         })
         .collect();
 
     sorted_users.sort_by(|(a_id, a_score), (b_id, b_score)| {
-        a_score.cmp(b_score).then_with(|| a_id.cmp(b_id))
+        a_score.total_cmp(b_score).then_with(|| a_id.cmp(b_id))
     });
 
     Ok(sorted_users)
@@ -142,7 +143,7 @@ pub async fn run() -> Result<(), DynError> {
     for (user_id, failures) in &users {
         match resolve_user(user_id).await {
             Ok(_) => {
-                if *failures > 0 {
+                if *failures > 0.0 {
                     UserHsFailures::remove(user_id).await.ok();
                 }
             }
@@ -229,9 +230,9 @@ mod tests {
         UserHsFailures::increment("sort_test_user_b").await?;
 
         let sorted = sort_by_failures(ids).await?;
-        assert_eq!(sorted[0], ("sort_test_user_c".to_string(), 0)); // 0 failures
-        assert_eq!(sorted[1], ("sort_test_user_a".to_string(), 1)); // 1 failure
-        assert_eq!(sorted[2], ("sort_test_user_b".to_string(), 3)); // 3 failures
+        assert_eq!(sorted[0], ("sort_test_user_c".to_string(), 0.0)); // 0 failures
+        assert_eq!(sorted[1], ("sort_test_user_a".to_string(), 1.0)); // 1 failure
+        assert_eq!(sorted[2], ("sort_test_user_b".to_string(), 3.0)); // 3 failures
 
         // Cleanup
         UserHsFailures::remove("sort_test_user_a").await?;
