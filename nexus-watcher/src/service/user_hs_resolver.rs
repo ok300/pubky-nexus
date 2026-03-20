@@ -36,11 +36,20 @@ pub struct UserHsFailures;
 impl RedisOps for UserHsFailures {}
 
 impl UserHsFailures {
-    /// Reads the failure count for a user (returns 0 when absent).
-    async fn get(user_id: &str) -> Result<u64, DynError> {
-        let score =
-            Self::check_sorted_set_member(None, &USER_HS_FAILURES_KEY_PARTS, &[user_id]).await?;
-        Ok(score.map_or(0, |s| s as u64))
+    /// Returns all failure counters as a map of user_id → failure_count.
+    async fn get_all() -> Result<HashMap<String, f64>, DynError> {
+        let entries = Self::try_from_index_sorted_set(
+            &USER_HS_FAILURES_KEY_PARTS,
+            None,
+            None,
+            None,
+            None,
+            SortOrder::Ascending,
+            None,
+        )
+        .await?;
+
+        Ok(entries.unwrap_or_default().into_iter().collect())
     }
 
     /// Increments the failure counter by 1.
@@ -69,22 +78,7 @@ async fn get_all_user_ids() -> Result<Vec<String>, DynError> {
 /// Sorts user IDs by their failure count (ascending — fewest failures first).
 /// Fetches all failure scores from the sorted set in a single Redis call.
 async fn sort_by_failures(user_ids: Vec<String>) -> Result<Vec<String>, DynError> {
-    let failures = UserHsFailures::try_from_index_sorted_set(
-        &USER_HS_FAILURES_KEY_PARTS,
-        None,
-        None,
-        None,
-        None,
-        SortOrder::Ascending,
-        None,
-    )
-    .await?;
-
-    // Build a lookup map: user_id -> failure_count
-    let failure_map: HashMap<String, f64> = failures
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
+    let failure_map = UserHsFailures::get_all().await?;
 
     // Sort user_ids by their failure count (0 for users not in the set)
     let mut pairs: Vec<_> = user_ids
@@ -190,18 +184,22 @@ mod tests {
 
         let user_id = "test_hs_failures_user_001";
 
-        // Initially zero
-        assert_eq!(UserHsFailures::get(user_id).await?, 0);
+        // Initially absent from the map
+        let all = UserHsFailures::get_all().await?;
+        assert_eq!(all.get(user_id).copied().unwrap_or(0.0) as u64, 0);
 
         // Increment twice
         UserHsFailures::increment(user_id).await?;
-        assert_eq!(UserHsFailures::get(user_id).await?, 1);
+        let all = UserHsFailures::get_all().await?;
+        assert_eq!(all.get(user_id).copied().unwrap_or(0.0) as u64, 1);
         UserHsFailures::increment(user_id).await?;
-        assert_eq!(UserHsFailures::get(user_id).await?, 2);
+        let all = UserHsFailures::get_all().await?;
+        assert_eq!(all.get(user_id).copied().unwrap_or(0.0) as u64, 2);
 
         // Remove
         UserHsFailures::remove(user_id).await?;
-        assert_eq!(UserHsFailures::get(user_id).await?, 0);
+        let all = UserHsFailures::get_all().await?;
+        assert_eq!(all.get(user_id).copied().unwrap_or(0.0) as u64, 0);
 
         Ok(())
     }
