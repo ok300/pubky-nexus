@@ -83,17 +83,24 @@ async fn get_all_user_ids() -> GraphResult<Vec<String>> {
 }
 
 /// Sorts user IDs by their failure count (ascending — fewest failures first).
-async fn sort_by_failures(user_ids: Vec<String>) -> RedisResult<Vec<String>> {
+/// Ties are broken by `user_id` ascending for deterministic ordering.
+/// Returns `(user_id, failure_score)` pairs.
+async fn sort_by_failures(user_ids: Vec<String>) -> RedisResult<Vec<(String, f64)>> {
     let failure_map = UserHsFailures::get_all().await?;
 
-    let mut sorted_user_ids = user_ids;
-    sorted_user_ids.sort_by(|a, b| {
-        let a_score = failure_map.get(a).copied().unwrap_or(0.0);
-        let b_score = failure_map.get(b).copied().unwrap_or(0.0);
-        a_score.total_cmp(&b_score)
+    let mut sorted_users: Vec<(String, f64)> = user_ids
+        .into_iter()
+        .map(|user_id| {
+            let score = failure_map.get(&user_id).copied().unwrap_or(0.0);
+            (user_id, score)
+        })
+        .collect();
+
+    sorted_users.sort_by(|(a_id, a_score), (b_id, b_score)| {
+        a_score.total_cmp(b_score).then_with(|| a_id.cmp(b_id))
     });
 
-    Ok(sorted_user_ids)
+    Ok(sorted_users)
 }
 
 /// Resolves a single user's homeserver and persists the HOSTED_BY relationship.
@@ -130,14 +137,15 @@ pub async fn run() -> Result<(), DynError> {
         return Ok(());
     }
 
-    let user_ids = sort_by_failures(user_ids).await?;
-    debug!("Resolving homeservers for {} users", user_ids.len());
+    let users = sort_by_failures(user_ids).await?;
+    debug!("Resolving homeservers for {} users", users.len());
 
-    for user_id in &user_ids {
+    for (user_id, failures) in &users {
         match resolve_user(user_id).await {
             Ok(_) => {
-                // TODO Only remove if this user had UserHsFailures
-                UserHsFailures::remove(user_id).await.ok();
+                if *failures > 0.0 {
+                    UserHsFailures::remove(user_id).await.ok();
+                }
             }
             Err(e) => {
                 warn!("Failed to resolve homeserver for user {user_id}: {e}");
@@ -222,9 +230,9 @@ mod tests {
         UserHsFailures::increment("sort_test_user_b").await?;
 
         let sorted = sort_by_failures(ids).await?;
-        assert_eq!(sorted[0], "sort_test_user_c"); // 0 failures
-        assert_eq!(sorted[1], "sort_test_user_a"); // 1 failure
-        assert_eq!(sorted[2], "sort_test_user_b"); // 3 failures
+        assert_eq!(sorted[0], ("sort_test_user_c".to_string(), 0.0)); // 0 failures
+        assert_eq!(sorted[1], ("sort_test_user_a".to_string(), 1.0)); // 1 failure
+        assert_eq!(sorted[2], ("sort_test_user_b".to_string(), 3.0)); // 3 failures
 
         // Cleanup
         UserHsFailures::remove("sort_test_user_a").await?;
