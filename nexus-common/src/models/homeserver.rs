@@ -107,15 +107,18 @@ impl Homeserver {
         Ok(())
     }
 
-    /// Retrieves all homeservers from the graph.
+    /// Retrieves all active (non-orphan) homeservers from the graph.
+    ///
+    /// An active homeserver is one that has at least one inbound `HOSTED_BY`
+    /// edge from a user.
     ///
     /// # Returns
-    /// A list of all known homeserver IDs.
+    /// A list of all active homeserver IDs.
     ///
     /// # Errors
-    /// Throws an error if no homeservers are found.
-    pub async fn get_all_from_graph() -> GraphResult<Vec<String>> {
-        let query = queries::get::get_all_homeservers();
+    /// Throws an error if no active homeservers are found.
+    pub async fn get_all_active_from_graph() -> GraphResult<Vec<String>> {
+        let query = queries::get::get_all_active_homeservers();
         let maybe_hs_ids = fetch_key_from_graph(query, "homeservers_list").await?;
         let hs_ids: Vec<String> = maybe_hs_ids.unwrap_or_default();
 
@@ -175,6 +178,7 @@ mod tests {
     use pubky::Keypair;
     use pubky_app_specs::PubkyId;
 
+    use crate::db::exec_single_row;
     use crate::{types::DynError, StackConfig, StackManager};
 
     use super::*;
@@ -221,6 +225,59 @@ mod tests {
             .expect("Failed to get homeserver from index");
 
         assert_eq!(id, hs_from_index.id);
+
+        Ok(())
+    }
+
+    #[tokio_shared_rt::test(shared)]
+    async fn test_get_all_active_excludes_orphan_homeservers() -> Result<(), DynError> {
+        StackManager::setup("unit-hs-test", &StackConfig::default()).await?;
+
+        // Create an orphan homeserver (no users hosted on it)
+        let orphan_keys = Keypair::random();
+        let orphan_id = PubkyId::try_from(&orphan_keys.public_key().to_z32())?;
+        let orphan_hs = Homeserver::new(orphan_id.clone());
+        orphan_hs.put_to_graph().await?;
+
+        // Create an active homeserver with a user linked via HOSTED_BY
+        let active_keys = Keypair::random();
+        let active_hs_id = PubkyId::try_from(&active_keys.public_key().to_z32())?;
+        let active_hs = Homeserver::new(active_hs_id.clone());
+        active_hs.put_to_graph().await?;
+
+        let user_keys = Keypair::random();
+        let user_id = user_keys.public_key().to_z32();
+
+        // Create a user node and link it to the active homeserver
+        let create_user_query = neo4rs::query(
+            "MERGE (u:User {id: $user_id})
+             SET u.name = 'test', u.indexed_at = 0
+             RETURN u;",
+        )
+        .param("user_id", user_id.clone());
+        exec_single_row(create_user_query).await?;
+
+        let link_query =
+            queries::put::set_user_homeserver(&user_id, &active_hs_id.to_string());
+        exec_single_row(link_query).await?;
+
+        // Query active homeservers
+        let active_ids = Homeserver::get_all_active_from_graph().await?;
+
+        // The active homeserver must be present
+        assert!(
+            active_ids.contains(&active_hs_id.to_string()),
+            "Active homeserver should be included"
+        );
+        // The orphan homeserver must NOT be present
+        assert!(
+            !active_ids.contains(&orphan_id.to_string()),
+            "Orphan homeserver should be excluded"
+        );
+
+        // Cleanup: remove the test user and its relationships
+        let cleanup_query = queries::del::delete_user(&user_id);
+        exec_single_row(cleanup_query).await?;
 
         Ok(())
     }
