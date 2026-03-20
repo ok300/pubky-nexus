@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use nexus_common::db::kv::{RedisResult, SortOrder};
 use nexus_common::db::{
-    GraphResult, PubkyConnector, RedisOps, exec_single_row, fetch_key_from_graph, queries,
+    exec_single_row, fetch_key_from_graph, queries, GraphResult, PubkyConnector, RedisOps,
 };
 use nexus_common::types::DynError;
 
