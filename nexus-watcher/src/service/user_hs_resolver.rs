@@ -169,22 +169,20 @@ mod tests {
     }
 
     /// Helper: create a User node in the graph
-    async fn create_test_user(user_id: &str) -> Result<(), DynError> {
+    async fn create_test_user(user_id: &str) -> GraphResult<()> {
         let query = neo4rs::query(
             "MERGE (u:User {id: $id})
              SET u.name = 'test', u.indexed_at = 0
              RETURN u;",
         )
         .param("id", user_id);
-        exec_single_row(query).await?;
-        Ok(())
+        exec_single_row(query).await
     }
 
     /// Helper: clean up test data
-    async fn cleanup_test_user(user_id: &str) -> Result<(), DynError> {
+    async fn cleanup_test_user(user_id: &str) -> GraphResult<()> {
         let query = queries::del::delete_user(user_id);
-        exec_single_row(query).await?;
-        Ok(())
+        exec_single_row(query).await
     }
 
     #[tokio_shared_rt::test(shared)]
