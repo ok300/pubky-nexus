@@ -12,7 +12,9 @@
 use std::collections::HashMap;
 
 use nexus_common::db::kv::{RedisResult, SortOrder};
-use nexus_common::db::{exec_single_row, fetch_key_from_graph, queries, PubkyConnector, RedisOps};
+use nexus_common::db::{
+    exec_single_row, fetch_key_from_graph, queries, GraphResult, PubkyConnector, RedisOps,
+};
 use nexus_common::types::DynError;
 
 use pubky::PublicKey;
@@ -24,20 +26,26 @@ use tracing::{debug, error, warn};
 // Redis Sorted Set for the per-user failure counter
 // ---------------------------------------------------------------------------
 
+/// Key parts for the Sorted Set holding user PK as a member and the failure count as the score.
 const USER_HS_FAILURES_KEY_PARTS: [&str; 2] = ["Users", "HsResolutionFailures"];
 
 /// Tracks consecutive failed homeserver lookups for users via a Redis Sorted Set.
-///
-/// The sorted set key is `Sorted:Users:HsResolutionFailures`, with each user PK
-/// as a member and the failure count as the score.
 #[derive(Serialize, Deserialize)]
 pub struct UserHsFailures;
 
 impl RedisOps for UserHsFailures {}
 
 impl UserHsFailures {
+    /// Reads the failure count for a user (returns 0 when absent).
+    #[allow(dead_code)]
+    async fn get(user_id: &str) -> RedisResult<u64> {
+        let score =
+            Self::check_sorted_set_member(None, &USER_HS_FAILURES_KEY_PARTS, &[user_id]).await?;
+        Ok(score.map_or(0, |s| s as u64))
+    }
+
     /// Returns all failure counters as a map of user_id → failure_count.
-    async fn get_all() -> Result<HashMap<String, f64>, DynError> {
+    async fn get_all() -> RedisResult<HashMap<String, f64>> {
         let entries = Self::try_from_index_sorted_set(
             &USER_HS_FAILURES_KEY_PARTS,
             None,
@@ -53,9 +61,8 @@ impl UserHsFailures {
     }
 
     /// Increments the failure counter by 1.
-    async fn increment(user_id: &str) -> Result<(), DynError> {
-        Self::increment_score_index_sorted_set(&USER_HS_FAILURES_KEY_PARTS, &[user_id]).await?;
-        Ok(())
+    async fn increment(user_id: &str) -> RedisResult<()> {
+        Self::increment_score_index_sorted_set(&USER_HS_FAILURES_KEY_PARTS, &[user_id]).await
     }
 
     /// Removes the failure counter (called on success).
@@ -69,27 +76,24 @@ impl UserHsFailures {
 // ---------------------------------------------------------------------------
 
 /// Fetches all user IDs from the graph.
-async fn get_all_user_ids() -> Result<Vec<String>, DynError> {
+async fn get_all_user_ids() -> GraphResult<Vec<String>> {
     let query = queries::get::get_all_user_ids();
     let maybe_user_ids = fetch_key_from_graph(query, "user_ids").await?;
     Ok(maybe_user_ids.unwrap_or_default())
 }
 
 /// Sorts user IDs by their failure count (ascending — fewest failures first).
-/// Fetches all failure scores from the sorted set in a single Redis call.
-async fn sort_by_failures(user_ids: Vec<String>) -> Result<Vec<String>, DynError> {
+async fn sort_by_failures(user_ids: Vec<String>) -> RedisResult<Vec<String>> {
     let failure_map = UserHsFailures::get_all().await?;
 
-    // Sort user_ids by their failure count (0 for users not in the set)
-    let mut pairs: Vec<_> = user_ids
-        .into_iter()
-        .map(|id| {
-            let score = failure_map.get(&id).copied().unwrap_or(0.0);
-            (id, score)
-        })
-        .collect();
-    pairs.sort_by(|(_, a), (_, b)| a.total_cmp(b));
-    Ok(pairs.into_iter().map(|(id, _)| id).collect())
+    let mut sorted_user_ids = user_ids;
+    sorted_user_ids.sort_by(|a, b| {
+        let a_score = failure_map.get(a).copied().unwrap_or(0.0);
+        let b_score = failure_map.get(b).copied().unwrap_or(0.0);
+        a_score.total_cmp(&b_score)
+    });
+
+    Ok(sorted_user_ids)
 }
 
 /// Resolves a single user's homeserver and persists the HOSTED_BY relationship.
@@ -101,8 +105,7 @@ async fn resolve_user(user_id: &str) -> Result<(), DynError> {
         return Err(format!("User {user_id} has no published homeserver").into());
     };
 
-    let hs_id =
-        PubkyId::try_from(&hs_pk.into_inner().to_z32()).map_err(|e| -> DynError { e.into() })?;
+    let hs_id = PubkyId::try_from(&hs_pk.into_inner().to_z32())?;
 
     let query = queries::put::set_user_homeserver(user_id, &hs_id);
     exec_single_row(query).await?;
@@ -113,7 +116,7 @@ async fn resolve_user(user_id: &str) -> Result<(), DynError> {
 
 /// Returns all user IDs hosted on a given homeserver.
 /// TODO Should be used in [EventProcessor::poll_events]
-pub async fn get_user_ids_by_homeserver(hs_id: &str) -> Result<Vec<String>, DynError> {
+pub async fn get_user_ids_by_homeserver(hs_id: &str) -> GraphResult<Vec<String>> {
     let query = queries::get::get_users_by_homeserver(hs_id);
     let maybe_user_ids = fetch_key_from_graph(query, "user_ids").await?;
     Ok(maybe_user_ids.unwrap_or_default())
@@ -133,6 +136,7 @@ pub async fn run() -> Result<(), DynError> {
     for user_id in &user_ids {
         match resolve_user(user_id).await {
             Ok(_) => {
+                // TODO Only remove if this user had UserHsFailures
                 UserHsFailures::remove(user_id).await.ok();
             }
             Err(e) => {
@@ -185,21 +189,17 @@ mod tests {
         let user_id = "test_hs_failures_user_001";
 
         // Initially absent from the map
-        let all = UserHsFailures::get_all().await?;
-        assert_eq!(all.get(user_id).copied().unwrap_or(0.0) as u64, 0);
+        assert_eq!(UserHsFailures::get(user_id).await?, 0);
 
         // Increment twice
         UserHsFailures::increment(user_id).await?;
-        let all = UserHsFailures::get_all().await?;
-        assert_eq!(all.get(user_id).copied().unwrap_or(0.0) as u64, 1);
+        assert_eq!(UserHsFailures::get(user_id).await?, 1);
         UserHsFailures::increment(user_id).await?;
-        let all = UserHsFailures::get_all().await?;
-        assert_eq!(all.get(user_id).copied().unwrap_or(0.0) as u64, 2);
+        assert_eq!(UserHsFailures::get(user_id).await?, 2);
 
         // Remove
         UserHsFailures::remove(user_id).await?;
-        let all = UserHsFailures::get_all().await?;
-        assert_eq!(all.get(user_id).copied().unwrap_or(0.0) as u64, 0);
+        assert_eq!(UserHsFailures::get(user_id).await?, 0);
 
         Ok(())
     }
