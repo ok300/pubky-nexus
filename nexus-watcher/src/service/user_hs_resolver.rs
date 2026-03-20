@@ -88,19 +88,16 @@ async fn get_all_user_ids() -> GraphResult<Vec<String>> {
 async fn sort_by_failures(user_ids: Vec<String>) -> RedisResult<Vec<(String, f64)>> {
     let failure_map = UserHsFailures::get_all().await?;
 
-    let mut sorted_users: Vec<(String, f64)> = user_ids
+    let mut sorted_users_and_failures = user_ids
         .into_iter()
-        .map(|user_id| {
-            let score = failure_map.get(&user_id).copied().unwrap_or(0.0);
-            (user_id, score)
-        })
-        .collect();
+        .map(|id| (id.clone(), failure_map.get(&id).copied().unwrap_or(0.0)))
+        .collect::<Vec<_>>();
 
-    sorted_users.sort_by(|(a_id, a_score), (b_id, b_score)| {
+    sorted_users_and_failures.sort_by(|(a_id, a_score), (b_id, b_score)| {
         a_score.total_cmp(b_score).then_with(|| a_id.cmp(b_id))
     });
 
-    Ok(sorted_users)
+    Ok(sorted_users_and_failures)
 }
 
 /// Resolves a single user's homeserver and persists the HOSTED_BY relationship.
@@ -137,10 +134,10 @@ pub async fn run() -> Result<(), DynError> {
         return Ok(());
     }
 
-    let users = sort_by_failures(user_ids).await?;
-    debug!("Resolving homeservers for {} users", users.len());
+    let users_and_failures = sort_by_failures(user_ids).await?;
+    debug!("Resolving HSs for {} users", users_and_failures.len());
 
-    for (user_id, failures) in &users {
+    for (user_id, failures) in &users_and_failures {
         match resolve_user(user_id).await {
             Ok(_) => {
                 if *failures > 0.0 {
