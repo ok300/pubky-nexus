@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use nexus_common::db::kv::{RedisResult, SortOrder};
 use nexus_common::db::{
-    exec_single_row, fetch_key_from_graph, queries, GraphResult, PubkyConnector, RedisOps,
+    GraphResult, PubkyConnector, RedisOps, exec_single_row, fetch_key_from_graph, queries,
 };
 use nexus_common::types::DynError;
 
@@ -65,9 +65,9 @@ impl UserHsFailures {
         Self::increment_score_index_sorted_set(&USER_HS_FAILURES_KEY_PARTS, &[user_id]).await
     }
 
-    /// Removes the failure counter (called on success).
-    async fn remove(user_id: &str) -> RedisResult<()> {
-        Self::remove_from_index_sorted_set(None, &USER_HS_FAILURES_KEY_PARTS, &[user_id]).await
+    /// Removes failure counters (called on success).
+    async fn remove<'a>(user_ids: &[&'a str]) -> RedisResult<()> {
+        Self::remove_from_index_sorted_set(None, &USER_HS_FAILURES_KEY_PARTS, user_ids).await
     }
 }
 
@@ -136,11 +136,13 @@ pub async fn run() -> Result<(), DynError> {
     debug!("Resolving homeservers for {} users", user_ids.len());
 
     let users_and_failures = sort_by_failures(user_ids).await?;
+    let mut user_ids_to_clear_failures = Vec::new();
+
     for (user_id, user_failures) in &users_and_failures {
         match resolve_user(user_id).await {
             Ok(_) => {
                 if *user_failures > 0.0 {
-                    UserHsFailures::remove(user_id).await.ok();
+                    user_ids_to_clear_failures.push(user_id.as_str());
                 }
             }
             Err(e) => {
@@ -150,6 +152,12 @@ pub async fn run() -> Result<(), DynError> {
                 }
             }
         }
+    }
+
+    if !user_ids_to_clear_failures.is_empty() {
+        UserHsFailures::remove(&user_ids_to_clear_failures)
+            .await
+            .ok();
     }
 
     Ok(())
@@ -188,20 +196,25 @@ mod tests {
     async fn test_user_hs_failures_increment_and_remove() -> Result<(), DynError> {
         setup().await?;
 
-        let user_id = "test_hs_failures_user_001";
+        let user_id_a = "test_hs_failures_user_001";
+        let user_id_b = "test_hs_failures_user_002";
 
         // Initially absent from the map
-        assert_eq!(UserHsFailures::get(user_id).await?, 0);
+        assert_eq!(UserHsFailures::get(user_id_a).await?, 0);
+        assert_eq!(UserHsFailures::get(user_id_b).await?, 0);
 
-        // Increment twice
-        UserHsFailures::increment(user_id).await?;
-        assert_eq!(UserHsFailures::get(user_id).await?, 1);
-        UserHsFailures::increment(user_id).await?;
-        assert_eq!(UserHsFailures::get(user_id).await?, 2);
+        // Increment two users
+        UserHsFailures::increment(user_id_a).await?;
+        assert_eq!(UserHsFailures::get(user_id_a).await?, 1);
+        UserHsFailures::increment(user_id_a).await?;
+        assert_eq!(UserHsFailures::get(user_id_a).await?, 2);
+        UserHsFailures::increment(user_id_b).await?;
+        assert_eq!(UserHsFailures::get(user_id_b).await?, 1);
 
-        // Remove
-        UserHsFailures::remove(user_id).await?;
-        assert_eq!(UserHsFailures::get(user_id).await?, 0);
+        // Remove both in a single call
+        UserHsFailures::remove(&[user_id_a, user_id_b]).await?;
+        assert_eq!(UserHsFailures::get(user_id_a).await?, 0);
+        assert_eq!(UserHsFailures::get(user_id_b).await?, 0);
 
         Ok(())
     }
@@ -229,8 +242,7 @@ mod tests {
         assert_eq!(sorted[2], ("sort_test_user_b".to_string(), 3.0)); // 3 failures
 
         // Cleanup
-        UserHsFailures::remove("sort_test_user_a").await?;
-        UserHsFailures::remove("sort_test_user_b").await?;
+        UserHsFailures::remove(&["sort_test_user_a", "sort_test_user_b"]).await?;
 
         Ok(())
     }
