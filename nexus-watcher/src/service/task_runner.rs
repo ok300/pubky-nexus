@@ -311,20 +311,20 @@ mod tests {
         let counter = Arc::new(AtomicU32::new(0));
         let c = counter.clone();
 
-        // Interval is 50 ms but the task sleeps for 300 ms,
+        // Interval is 50 ms but the task sleeps for 150 ms,
         // so without Skip the counter would burst to catch up.
         let tasks = vec![PeriodicTask::new("slow-task", 50, move || {
             let c = c.clone();
             async move {
                 c.fetch_add(1, Ordering::SeqCst);
-                tokio::time::sleep(Duration::from_millis(300)).await;
+                tokio::time::sleep(Duration::from_millis(150)).await;
                 Ok(())
             }
         })];
 
-        // Let the task run for ~1500 ms – enough for ~5 slow iterations.
+        // Let the task run for ~500 ms – enough for ~3 slow iterations.
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(1500)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
             let _ = shutdown_tx.send(true);
         });
 
@@ -334,13 +334,13 @@ mod tests {
         assert_eq!(results[0].outcome, TaskOutcome::Completed);
 
         let ticks = counter.load(Ordering::SeqCst);
-        // With Skip behaviour and a 300 ms task on a 50 ms interval the task
-        // should execute roughly every 300 ms.  Over 1500 ms that is about 5
+        // With Skip behaviour and a 150 ms task on a 50 ms interval the task
+        // should execute roughly every 150 ms.  Over 500 ms that is about 3–4
         // invocations.  Without Skip (Burst, the default) the counter would
-        // race ahead to ~30.  We assert a generous upper bound.
+        // race ahead to ~10.  We assert a reasonable upper bound.
         assert!(
-            ticks <= 10,
-            "expected at most 10 ticks (skip behaviour), but got {ticks}"
+            ticks <= 5,
+            "expected at most 5 ticks (skip behaviour), but got {ticks}"
         );
         assert!(ticks >= 1, "task should have ticked at least once");
     }
