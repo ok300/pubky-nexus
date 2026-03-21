@@ -139,6 +139,14 @@ impl Homeserver {
         let active_user_counts: Vec<i64> =
             row.get("active_user_counts").map_err(GraphError::from)?;
 
+        if homeserver_ids.len() != active_user_counts.len() {
+            return Err(GraphError::Generic(format!(
+                "Mismatched lengths: {} homeserver IDs vs {} active user counts",
+                homeserver_ids.len(),
+                active_user_counts.len()
+            )));
+        }
+
         if homeserver_ids.is_empty() {
             return Err(GraphError::Generic("No homeservers found in graph".into()));
         }

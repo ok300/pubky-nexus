@@ -45,14 +45,20 @@ async fn test_get_all_homeservers_includes_orphan_and_active() -> Result<(), Dyn
     );
 
     // The active homeserver must have at least 1 active user
-    let active_entry = hs_entries.iter().find(|e| e.id == default_id.as_str()).unwrap();
+    let active_entry = hs_entries
+        .iter()
+        .find(|e| e.id == default_id.as_str())
+        .expect("Active HS entry should be present");
     assert!(
         active_entry.active_users >= 1,
         "Active HS should have at least 1 active user"
     );
 
     // The orphan homeserver must have 0 active users
-    let orphan_entry = hs_entries.iter().find(|e| e.id == orphan_id.as_str()).unwrap();
+    let orphan_entry = hs_entries
+        .iter()
+        .find(|e| e.id == orphan_id.as_str())
+        .expect("Orphan HS entry should be present");
     assert_eq!(
         orphan_entry.active_users, 0,
         "Orphan HS should have 0 active users"
