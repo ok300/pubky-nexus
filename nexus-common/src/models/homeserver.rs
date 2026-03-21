@@ -123,7 +123,7 @@ impl Homeserver {
         let hs_ids: Vec<String> = maybe_hs_ids.unwrap_or_default();
 
         match hs_ids.is_empty() {
-            true => Err(GraphError::Generic("No homeservers found in graph".into())),
+            true => Err(GraphError::Generic("No active HSs found in graph".into())),
             false => Ok(hs_ids),
         }
     }
