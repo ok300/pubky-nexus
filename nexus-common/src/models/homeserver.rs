@@ -1,6 +1,6 @@
 use crate::db::exec_single_row;
+use crate::db::fetch_all_rows_from_graph;
 use crate::db::fetch_key_from_graph;
-use crate::db::fetch_row_from_graph;
 use crate::db::kv::RedisError;
 use crate::db::kv::RedisResult;
 use crate::db::queries;
@@ -129,33 +129,20 @@ impl Homeserver {
     /// Returns an error if no homeservers are found.
     pub async fn get_all_from_graph() -> GraphResult<Vec<HomeserverEntry>> {
         let query = queries::get::get_all_homeservers();
-        let maybe_row = fetch_row_from_graph(query).await?;
+        let rows = fetch_all_rows_from_graph(query).await?;
 
-        let Some(row) = maybe_row else {
-            return Err(GraphError::Generic("No homeservers found in graph".into()));
-        };
-
-        let homeserver_ids: Vec<String> = row.get("homeserver_ids").map_err(GraphError::from)?;
-        let active_user_counts: Vec<i64> =
-            row.get("active_user_counts").map_err(GraphError::from)?;
-
-        if homeserver_ids.len() != active_user_counts.len() {
-            return Err(GraphError::Generic(format!(
-                "Mismatched lengths: {} homeserver IDs vs {} active user counts",
-                homeserver_ids.len(),
-                active_user_counts.len()
-            )));
-        }
-
-        if homeserver_ids.is_empty() {
+        if rows.is_empty() {
             return Err(GraphError::Generic("No homeservers found in graph".into()));
         }
 
-        let entries = homeserver_ids
+        let entries = rows
             .into_iter()
-            .zip(active_user_counts)
-            .map(|(id, active_users)| HomeserverEntry { id, active_users })
-            .collect();
+            .map(|row| {
+                let id: String = row.get("id").map_err(GraphError::from)?;
+                let active_users: i64 = row.get("active_users").map_err(GraphError::from)?;
+                Ok(HomeserverEntry { id, active_users })
+            })
+            .collect::<GraphResult<Vec<_>>>()?;
 
         Ok(entries)
     }
