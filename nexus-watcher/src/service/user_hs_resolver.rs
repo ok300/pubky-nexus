@@ -160,29 +160,20 @@ pub async fn run() -> Result<(), DynError> {
 mod tests {
     use super::*;
     use nexus_common::db::exec_single_row;
+    use nexus_common::models::user::UserDetails;
     use nexus_common::types::DynError;
     use nexus_common::{StackConfig, StackManager};
+
+    // Valid 52-char z32 public key strings used as test user IDs.
+    const TEST_USER_ID_1: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const TEST_USER_ID_2: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const TEST_USER_ID_A: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    const TEST_USER_ID_B: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    const TEST_USER_ID_C: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
     async fn setup() -> Result<(), DynError> {
         StackManager::setup("unit-hs-resolver-test", &StackConfig::default()).await?;
         Ok(())
-    }
-
-    /// Helper: create a User node in the graph
-    async fn create_test_user(user_id: &str) -> GraphResult<()> {
-        let query = neo4rs::query(
-            "MERGE (u:User {id: $id})
-             SET u.name = 'test', u.indexed_at = 0
-             RETURN u;",
-        )
-        .param("id", user_id);
-        exec_single_row(query).await
-    }
-
-    /// Helper: clean up test data
-    async fn cleanup_test_user(user_id: &str) -> GraphResult<()> {
-        let query = queries::del::delete_user(user_id);
-        exec_single_row(query).await
     }
 
     #[tokio_shared_rt::test(shared)]
@@ -240,11 +231,16 @@ mod tests {
     async fn test_set_user_homeserver_graph_query() -> Result<(), DynError> {
         setup().await?;
 
-        let user_id = "hs_resolver_test_user_001";
+        let user_id = TEST_USER_ID_1;
         let hs_id_a = "hs_resolver_test_hs_aaa";
         let hs_id_b = "hs_resolver_test_hs_bbb";
 
-        create_test_user(user_id).await?;
+        let user_details = UserDetails {
+            id: PubkyId::try_from(user_id).unwrap(),
+            name: "test".to_string(),
+            ..Default::default()
+        };
+        exec_single_row(queries::put::create_user(&user_details)?).await?;
 
         // Set initial homeserver
         let query = queries::put::set_user_homeserver(user_id, hs_id_a);
@@ -255,7 +251,7 @@ mod tests {
         exec_single_row(query).await?;
 
         // Cleanup
-        cleanup_test_user(user_id).await?;
+        UserDetails::delete(user_id).await?;
 
         Ok(())
     }
@@ -264,10 +260,15 @@ mod tests {
     async fn test_set_user_homeserver_idempotent() -> Result<(), DynError> {
         setup().await?;
 
-        let user_id = "hs_resolver_test_user_noop";
+        let user_id = TEST_USER_ID_2;
         let hs_id = "hs_resolver_test_hs_noop";
 
-        create_test_user(user_id).await?;
+        let user_details = UserDetails {
+            id: PubkyId::try_from(user_id).unwrap(),
+            name: "test".to_string(),
+            ..Default::default()
+        };
+        exec_single_row(queries::put::create_user(&user_details)?).await?;
 
         // Set homeserver for the first time
         let query = queries::put::set_user_homeserver(user_id, hs_id);
@@ -278,7 +279,7 @@ mod tests {
         exec_single_row(query).await?;
 
         // Cleanup
-        cleanup_test_user(user_id).await?;
+        UserDetails::delete(user_id).await?;
 
         Ok(())
     }
@@ -287,15 +288,20 @@ mod tests {
     async fn test_get_user_ids_by_homeserver() -> Result<(), DynError> {
         setup().await?;
 
-        let user_a = "hs_users_test_user_aaa";
-        let user_b = "hs_users_test_user_bbb";
-        let user_c = "hs_users_test_user_ccc";
+        let user_a = TEST_USER_ID_A;
+        let user_b = TEST_USER_ID_B;
+        let user_c = TEST_USER_ID_C;
         let hs_one = "hs_users_test_hs_one";
         let hs_two = "hs_users_test_hs_two";
 
-        create_test_user(user_a).await?;
-        create_test_user(user_b).await?;
-        create_test_user(user_c).await?;
+        for user_id in [user_a, user_b, user_c] {
+            let user_details = UserDetails {
+                id: PubkyId::try_from(user_id).unwrap(),
+                name: "test".to_string(),
+                ..Default::default()
+            };
+            exec_single_row(queries::put::create_user(&user_details)?).await?;
+        }
 
         // Host user_a and user_b on hs_one, user_c on hs_two
         exec_single_row(queries::put::set_user_homeserver(user_a, hs_one)).await?;
@@ -316,9 +322,9 @@ mod tests {
         assert!(users.is_empty());
 
         // Cleanup
-        cleanup_test_user(user_a).await?;
-        cleanup_test_user(user_b).await?;
-        cleanup_test_user(user_c).await?;
+        for user_id in [user_a, user_b, user_c] {
+            UserDetails::delete(user_id).await?;
+        }
 
         Ok(())
     }

@@ -327,7 +327,8 @@ pub fn create_homeserver(homeserver_id: &str) -> Query {
 /// Otherwise deletes the old relationship, MERGEs the target homeserver
 /// node, and creates the new HOSTED_BY edge.
 pub fn set_user_homeserver(user_id: &str, homeserver_id: &str) -> Query {
-    query(
+    Query::new(
+        "set_user_homeserver",
         "MATCH (u:User {id: $user_id})
          // Remove existing HOSTED_BY (no-op when none exists)
          OPTIONAL MATCH (u)-[old:HOSTED_BY]->(:Homeserver)
@@ -337,6 +338,6 @@ pub fn set_user_homeserver(user_id: &str, homeserver_id: &str) -> Query {
          MERGE (hs:Homeserver {id: $hs_id})
          MERGE (u)-[:HOSTED_BY]->(hs)",
     )
-    .param("user_id", user_id)
-    .param("hs_id", homeserver_id)
+    .param("user_id", user_id.to_string())
+    .param("hs_id", homeserver_id.to_string())
 }
