@@ -86,6 +86,7 @@ pub(crate) async fn run_periodic_tasks(
             interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
             loop {
                 tokio::select! {
+                    biased;
                     _ = shutdown.changed() => {
                         info!("Shutdown received, exiting '{name}' loop");
                         break;
@@ -303,7 +304,7 @@ mod tests {
     /// NOT queue up several back-to-back invocations.  With `MissedTickBehavior::Skip`
     /// the missed ticks are simply dropped, so the task runs roughly once per
     /// `max(interval, task_duration)` rather than bursting.
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn test_slow_task_skips_missed_ticks() {
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
@@ -321,13 +322,26 @@ mod tests {
             }
         })];
 
-        // Let the task run for ~500 ms – enough for ~3 slow iterations.
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            let _ = shutdown_tx.send(true);
-        });
+        let handle = tokio::spawn(run_periodic_tasks(tasks, shutdown_rx));
 
-        let results = run_periodic_tasks(tasks, shutdown_rx).await;
+        // Advance virtual time in 50 ms steps (the interval period), yielding
+        // after each step so the spawned tasks can react to expired timers.
+        // Over 500 ms of virtual time with a 150 ms task, Skip behaviour
+        // gives ~4 invocations (ticks at 0, 150, 300, 450 ms).
+        for _ in 0..10 {
+            tokio::time::advance(Duration::from_millis(50)).await;
+            tokio::task::yield_now().await;
+        }
+
+        // Send the shutdown signal and advance a bit more so the task
+        // notices it after its current sleep finishes.
+        let _ = shutdown_tx.send(true);
+        for _ in 0..4 {
+            tokio::time::advance(Duration::from_millis(50)).await;
+            tokio::task::yield_now().await;
+        }
+
+        let results = handle.await.expect("task runner panicked");
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].outcome, TaskOutcome::Completed);

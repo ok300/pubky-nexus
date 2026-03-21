@@ -27,4 +27,5 @@ base32 = "0.5"
 httpc-test = "0.1.10"
 pubky-testnet = { workspace = true }
 rand = "0.10.0"
+tokio = { workspace = true, features = ["test-util"] }
 tokio-shared-rt = { workspace = true }
