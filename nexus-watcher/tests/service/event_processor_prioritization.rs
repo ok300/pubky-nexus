@@ -2,6 +2,8 @@ use crate::event_processor::utils::default_moderation_tests;
 use crate::service::utils::HS_IDS;
 use crate::service::utils::{create_mock_event_processors, setup, MockEventProcessorRunner};
 use anyhow::Result;
+use nexus_common::db::exec_single_row;
+use nexus_common::db::graph::Query;
 use nexus_common::models::homeserver::Homeserver;
 use nexus_common::types::DynError;
 use nexus_watcher::service::EventProcessorRunner;
@@ -9,6 +11,22 @@ use nexus_watcher::service::TEventProcessorRunner;
 use pubky_app_specs::PubkyId;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+/// Helper: creates a User node in the graph and links it to the given homeserver
+/// via a HOSTED_BY relationship.
+async fn link_test_user_to_hs(user_id: &str, hs_id: &str) -> Result<(), DynError> {
+    let query = Query::new(
+        "test_link_user_to_hs",
+        "MERGE (u:User {id: $user_id})
+         WITH u
+         MERGE (hs:Homeserver {id: $hs_id})
+         MERGE (u)-[:HOSTED_BY]->(hs)",
+    )
+    .param("user_id", user_id.to_string())
+    .param("hs_id", hs_id.to_string());
+    exec_single_row(query).await?;
+    Ok(())
+}
 
 #[tokio_shared_rt::test(shared)]
 async fn test_event_processor_runner_default_homeserver_excluded() -> Result<(), DynError> {
@@ -31,11 +49,25 @@ async fn test_event_processor_runner_default_homeserver_excluded() -> Result<(),
         hs.put_to_graph().await.unwrap();
     }
 
-    // The default homeserver should be excluded from the list
+    // Link users to some homeservers, but not HS_IDS[2] (which remains without active users)
+    for (i, hs_id) in HS_IDS.iter().enumerate() {
+        if i != 2 {
+            link_test_user_to_hs(&format!("test_user_priority_{i}"), hs_id).await?;
+        }
+    }
+
     let hs_ids = runner.external_homeservers_by_priority().await?;
+
+    // The default homeserver should be excluded from the list
     assert!(
         !hs_ids.contains(&HS_IDS[3].to_string()),
         "Default homeserver should be excluded from homeservers_by_priority"
+    );
+
+    // Homeservers with no active users should be excluded
+    assert!(
+        !hs_ids.contains(&HS_IDS[2].to_string()),
+        "Homeserver with no active users should be excluded"
     );
 
     Ok(())
@@ -63,11 +95,25 @@ async fn test_mock_event_processor_runner_default_homeserver_excluded() -> Resul
         hs.put_to_graph().await.unwrap();
     }
 
-    // The default homeserver (HS_IDS[0]) should be excluded from the list
+    // Link users to some homeservers, but not HS_IDS[2] (which remains without active users)
+    for (i, hs_id) in HS_IDS.iter().enumerate() {
+        if i != 2 {
+            link_test_user_to_hs(&format!("test_user_mock_priority_{i}"), hs_id).await?;
+        }
+    }
+
     let hs_ids = runner.external_homeservers_by_priority().await?;
+
+    // The default homeserver (HS_IDS[0]) should be excluded from the list
     assert!(
         !hs_ids.contains(&HS_IDS[0].to_string()),
         "Default homeserver should be excluded from homeservers_by_priority"
+    );
+
+    // Homeservers with no active users should be excluded
+    assert!(
+        !hs_ids.contains(&HS_IDS[2].to_string()),
+        "Homeserver with no active users should be excluded"
     );
 
     Ok(())

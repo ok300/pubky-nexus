@@ -53,7 +53,12 @@ impl TEventProcessorRunner for MockEventProcessorRunner {
     async fn external_homeservers_by_priority(&self) -> Result<Vec<String>, DynError> {
         let graph_hs_entries = Homeserver::get_all_from_graph().await?;
 
-        let graph_hs_ids: Vec<String> = graph_hs_entries.into_iter().map(|e| e.id).collect();
+        // Only consider homeservers with active users
+        let graph_hs_ids: Vec<String> = graph_hs_entries
+            .into_iter()
+            .filter(|e| e.active_users > 0)
+            .map(|e| e.id)
+            .collect();
         let mut hs_ids = vec![];
 
         // Skip the homeserver IDs that are not part of the runner's event processors
