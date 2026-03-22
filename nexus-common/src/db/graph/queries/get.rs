@@ -270,8 +270,7 @@ pub fn get_all_homeservers_with_active_users() -> Query {
         "MATCH (u:User)-[:HOSTED_BY]->(hs:Homeserver)
         WITH hs.id AS id, count(u) AS active_users
         ORDER BY active_users DESC
-        WITH collect(id) AS homeservers_list
-        RETURN homeservers_list",
+        RETURN collect(id) AS homeservers_list",
     )
 }
 
