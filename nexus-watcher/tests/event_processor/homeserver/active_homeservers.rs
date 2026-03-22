@@ -53,7 +53,7 @@ async fn test_get_active_homeservers_from_graph_excludes_default_and_orphan() ->
 
     assert!(
         hs_ids.is_empty(),
-        "Expected no results: only the default SH as active users, adn it is excluded"
+        "Expected no results: only the default HS as active users, and it is excluded"
     );
 
     // Cleanup
