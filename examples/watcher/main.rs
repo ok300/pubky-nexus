@@ -44,6 +44,7 @@ async fn main() -> Result<(), DynError> {
                 events_limit: 100,
                 monitored_homeservers_limit: 5,
                 watcher_sleep: 5000,
+                hs_resolver_sleep: 10_000,
                 stack,
                 moderation_id,
                 moderated_tags: Vec::new(),
