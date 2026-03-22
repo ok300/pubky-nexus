@@ -50,8 +50,8 @@ impl TEventProcessorRunner for MockEventProcessorRunner {
     }
 
     /// Unlike the prod EventProcessorRunner, the mock does not query the graph.
-    /// Graph interaction is covered by test_event_processor_runner_default_homeserver_excluded,
-    /// which uses the real runner. Here we just return the pre-configured processor IDs, minus the default HS.
+    /// Graph interaction is covered by tests in active_homeservers.rs.
+    /// Here we just return the pre-configured processor IDs, minus the default HS.
     async fn external_homeservers_by_priority(&self) -> Result<Vec<String>, DynError> {
         let default_hs = self.default_homeserver().to_string();
 
