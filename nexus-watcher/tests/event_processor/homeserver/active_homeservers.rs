@@ -33,8 +33,8 @@ async fn test_get_all_homeservers_excludes_orphan() -> Result<(), DynError> {
     let link_query = queries::put::set_user_homeserver(&user_id, &default_id);
     exec_single_row(link_query).await?;
 
-    // Query all homeservers
-    let hs_ids = Homeserver::get_all_from_graph().await?;
+    // Query all active homeservers
+    let hs_ids = Homeserver::get_all_active_from_graph().await?;
 
     // The active homeserver must be present
     assert!(

@@ -78,8 +78,7 @@ pub async fn create_random_homeservers_and_persist(
     if let Some(count) = create_active_users {
         for _ in 0..count {
             let user_keypair = Keypair::random();
-            let user_id =
-                PubkyId::try_from(user_keypair.public_key().to_z32().as_str()).unwrap();
+            let user_id = PubkyId::try_from(user_keypair.public_key().to_z32().as_str()).unwrap();
             let user = UserDetails {
                 id: user_id.clone(),
                 name: "test-user".to_string(),

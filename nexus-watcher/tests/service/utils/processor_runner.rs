@@ -51,7 +51,7 @@ impl TEventProcessorRunner for MockEventProcessorRunner {
     }
 
     async fn external_homeservers_by_priority(&self) -> Result<Vec<String>, DynError> {
-        let graph_hs_ids = Homeserver::get_all_from_graph().await?;
+        let graph_hs_ids = Homeserver::get_all_active_from_graph().await?;
 
         let mut hs_ids = vec![];
 
