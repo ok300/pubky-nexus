@@ -55,17 +55,7 @@ impl TEventProcessorRunner for EventProcessorRunner {
     }
 
     async fn external_homeservers_by_priority(&self) -> Result<Vec<String>, DynError> {
-        let hs_entries = Homeserver::get_all_from_graph().await?;
-
-        // Exclude homeservers with no active users and the default homeserver,
-        // which is processed separately
-        let hs_ids = hs_entries
-            .into_iter()
-            .filter(|entry| entry.active_users > 0)
-            .map(|entry| entry.id)
-            .filter(|hs_id| hs_id != self.default_homeserver())
-            .collect();
-
+        let hs_ids = Homeserver::get_all_from_graph(self.default_homeserver()).await?;
         Ok(hs_ids)
     }
 

@@ -259,20 +259,22 @@ pub fn get_homeserver_by_id(id: &str) -> Query {
     .param("id", id)
 }
 
-/// Retrieves all homeserver IDs along with the number of active users
-/// (incoming `HOSTED_BY` relationships from `User` nodes) for each homeserver.
+/// Retrieves the IDs of homeservers that have at least one active user
+/// (incoming `HOSTED_BY` relationship from a `User` node), excluding the
+/// homeserver identified by `excluded_hs_id`.
 ///
 /// The results are sorted by the number of active users in descending order.
-/// Each returned row contains an `id` and an `active_users` column.
-pub fn get_all_homeservers_and_active_users() -> Query {
+pub fn get_active_homeservers(excluded_hs_id: &str) -> Query {
     Query::new(
-        "get_all_homeservers_and_active_users",
-        "MATCH (hs:Homeserver)
-        OPTIONAL MATCH (u:User)-[:HOSTED_BY]->(hs)
+        "get_active_homeservers",
+        "MATCH (u:User)-[:HOSTED_BY]->(hs:Homeserver)
+        WHERE hs.id <> $excluded_hs_id
         WITH hs.id AS id, count(u) AS active_users
         ORDER BY active_users DESC
-        RETURN id, active_users",
+        WITH collect(id) AS homeserver_ids
+        RETURN homeserver_ids",
     )
+    .param("excluded_hs_id", excluded_hs_id)
 }
 
 /// Retrieves all user IDs from the graph
