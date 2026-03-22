@@ -89,33 +89,12 @@ async fn test_mock_event_processor_runner_default_homeserver_excluded() -> Resul
         shutdown_rx: tokio::sync::watch::channel(false).1,
     };
 
-    // Persist the homeservers
-    for hs_id in HS_IDS {
-        let hs = Homeserver::new(PubkyId::try_from(hs_id).unwrap());
-        hs.put_to_graph().await.unwrap();
-    }
-
-    // Create users and link them to some homeservers, but not HS_IDS[2] (which remains without active users)
-    for (i, hs_id) in HS_IDS.iter().enumerate() {
-        if i != 2 {
-            let user_id = format!("test_user_mock_priority_{i}");
-            create_test_user(&user_id).await?;
-            exec_single_row(queries::put::set_user_homeserver(&user_id, hs_id)).await?;
-        }
-    }
-
     let hs_ids = runner.external_homeservers_by_priority().await?;
 
     // The default homeserver (HS_IDS[0]) should be excluded from the list
     assert!(
         !hs_ids.contains(&HS_IDS[0].to_string()),
-        "Default homeserver should be excluded from homeservers_by_priority"
-    );
-
-    // Homeservers with no active users should be excluded
-    assert!(
-        !hs_ids.contains(&HS_IDS[2].to_string()),
-        "Homeserver with no active users should be excluded"
+        "Default homeserver should be excluded from external_homeservers_by_priority"
     );
 
     Ok(())

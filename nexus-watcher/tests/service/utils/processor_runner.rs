@@ -1,5 +1,4 @@
 use crate::service::utils::processor::MockEventProcessor;
-use nexus_common::models::homeserver::Homeserver;
 use nexus_common::types::DynError;
 use nexus_watcher::service::{TEventProcessor, TEventProcessorRunner};
 use std::sync::Arc;
@@ -51,17 +50,15 @@ impl TEventProcessorRunner for MockEventProcessorRunner {
     }
 
     async fn external_homeservers_by_priority(&self) -> Result<Vec<String>, DynError> {
-        let graph_hs_ids = Homeserver::get_all_from_graph(self.default_homeserver()).await?;
+        let default_hs = self.default_homeserver().to_string();
 
-        let mut hs_ids = vec![];
-
-        // Skip the homeserver IDs that are not part of the runner's event processors
-        for mock_event_processor in self.event_processors.iter() {
-            let hs_id = mock_event_processor.homeserver_id.to_string();
-            if graph_hs_ids.contains(&hs_id) {
-                hs_ids.push(hs_id);
-            }
-        }
+        // Return all mock processor homeserver IDs except the default one
+        let hs_ids = self
+            .event_processors
+            .iter()
+            .map(|p| p.homeserver_id.to_string())
+            .filter(|id| *id != default_hs)
+            .collect();
 
         Ok(hs_ids)
     }
