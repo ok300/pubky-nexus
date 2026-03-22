@@ -8,7 +8,8 @@ use pubky::Keypair;
 use pubky_app_specs::{PubkyAppUser, PubkyId};
 
 #[tokio_shared_rt::test(shared)]
-async fn test_get_all_from_graph_excludes_default_and_orphan() -> Result<(), DynError> {
+async fn test_get_active_homeservers_from_graph_excludes_default_and_orphan() -> Result<(), DynError>
+{
     let mut test = WatcherTest::setup().await?;
 
     // Create an orphan homeserver (no users hosted on it)
@@ -20,10 +21,10 @@ async fn test_get_all_from_graph_excludes_default_and_orphan() -> Result<(), Dyn
     // Create a user via WatcherTest, which persists the user in the graph
     let user_kp = Keypair::random();
     let user = PubkyAppUser {
-        bio: Some("test_get_all_from_graph".to_string()),
+        bio: Some("test_get_active_homeservers_from_graph".to_string()),
         image: None,
         links: None,
-        name: "Watcher:AllHS:User".to_string(),
+        name: "Watcher:AllActiveHS:User".to_string(),
         status: None,
     };
     let user_id = test.create_user(&user_kp, &user).await?;
@@ -33,30 +34,22 @@ async fn test_get_all_from_graph_excludes_default_and_orphan() -> Result<(), Dyn
     let link_query = queries::put::set_user_homeserver(&user_id, &default_id);
     exec_single_row(link_query).await?;
 
-    // Query all homeservers, excluding the default one
-    let hs_ids = Homeserver::get_all_from_graph(&default_id).await;
+    // Query all active homeservers, excluding the default one
+    let hs_ids = Homeserver::get_active_homeservers_from_graph(&default_id)
+        .await
+        .unwrap();
 
     // The default homeserver should be excluded
-    match &hs_ids {
-        Ok(ids) => assert!(
-            !ids.contains(&default_id.to_string()),
-            "Default HS should be excluded"
-        ),
-        // "No homeservers found" is expected when the default was the only active HS
-        Err(e) => assert!(
-            e.to_string().contains("No homeservers found"),
-            "Unexpected error: {e}"
-        ),
-    }
+    assert!(
+        !hs_ids.contains(&default_id.to_string()),
+        "Default HS should be excluded"
+    );
 
     // The orphan homeserver (no active users) should be excluded
-    match &hs_ids {
-        Ok(ids) => assert!(
-            !ids.contains(&orphan_id.to_string()),
-            "Orphan HS should be excluded"
-        ),
-        Err(_) => { /* already validated above */ }
-    }
+    assert!(
+        !hs_ids.contains(&orphan_id.to_string()),
+        "Orphan HS should be excluded"
+    );
 
     // Cleanup
     test.cleanup_user(&user_kp).await?;

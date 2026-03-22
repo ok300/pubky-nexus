@@ -55,7 +55,7 @@ impl TEventProcessorRunner for EventProcessorRunner {
     }
 
     async fn external_homeservers_by_priority(&self) -> Result<Vec<String>, DynError> {
-        let hs_ids = Homeserver::get_all_from_graph(self.default_homeserver()).await?;
+        let hs_ids = Homeserver::get_active_homeservers_from_graph(self.default_homeserver()).await?;
         Ok(hs_ids)
     }
 
