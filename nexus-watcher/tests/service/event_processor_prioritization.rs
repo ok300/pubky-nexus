@@ -4,6 +4,7 @@ use crate::service::utils::{create_mock_event_processors, setup, MockEventProces
 use anyhow::Result;
 use nexus_common::db::exec_single_row;
 use nexus_common::db::graph::Query;
+use nexus_common::db::queries;
 use nexus_common::models::homeserver::Homeserver;
 use nexus_common::types::DynError;
 use nexus_watcher::service::EventProcessorRunner;
@@ -12,18 +13,15 @@ use pubky_app_specs::PubkyId;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Helper: creates a User node in the graph and links it to the given homeserver
-/// via a HOSTED_BY relationship.
-async fn link_test_user_to_hs(user_id: &str, hs_id: &str) -> Result<(), DynError> {
+/// Helper: creates a minimal User node in the graph.
+async fn create_test_user(user_id: &str) -> Result<(), DynError> {
     let query = Query::new(
-        "test_link_user_to_hs",
-        "MERGE (u:User {id: $user_id})
-         WITH u
-         MERGE (hs:Homeserver {id: $hs_id})
-         MERGE (u)-[:HOSTED_BY]->(hs)",
+        "create_test_user",
+        "MERGE (u:User {id: $id})
+         SET u.name = 'test', u.indexed_at = 0
+         RETURN u;",
     )
-    .param("user_id", user_id.to_string())
-    .param("hs_id", hs_id.to_string());
+    .param("id", user_id);
     exec_single_row(query).await?;
     Ok(())
 }
@@ -49,10 +47,12 @@ async fn test_event_processor_runner_default_homeserver_excluded() -> Result<(),
         hs.put_to_graph().await.unwrap();
     }
 
-    // Link users to some homeservers, but not HS_IDS[2] (which remains without active users)
+    // Create users and link them to some homeservers, but not HS_IDS[2] (which remains without active users)
     for (i, hs_id) in HS_IDS.iter().enumerate() {
         if i != 2 {
-            link_test_user_to_hs(&format!("test_user_priority_{i}"), hs_id).await?;
+            let user_id = format!("test_user_priority_{i}");
+            create_test_user(&user_id).await?;
+            exec_single_row(queries::put::set_user_homeserver(&user_id, hs_id)).await?;
         }
     }
 
@@ -95,10 +95,12 @@ async fn test_mock_event_processor_runner_default_homeserver_excluded() -> Resul
         hs.put_to_graph().await.unwrap();
     }
 
-    // Link users to some homeservers, but not HS_IDS[2] (which remains without active users)
+    // Create users and link them to some homeservers, but not HS_IDS[2] (which remains without active users)
     for (i, hs_id) in HS_IDS.iter().enumerate() {
         if i != 2 {
-            link_test_user_to_hs(&format!("test_user_mock_priority_{i}"), hs_id).await?;
+            let user_id = format!("test_user_mock_priority_{i}");
+            create_test_user(&user_id).await?;
+            exec_single_row(queries::put::set_user_homeserver(&user_id, hs_id)).await?;
         }
     }
 
