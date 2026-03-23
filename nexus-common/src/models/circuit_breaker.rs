@@ -1,6 +1,5 @@
-use crate::db::get_redis_conn;
-use crate::db::kv::{RedisError, RedisResult};
-use deadpool_redis::redis::AsyncCommands;
+use crate::db::kv::RedisResult;
+use crate::db::RedisOps;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
@@ -37,6 +36,8 @@ impl Default for HomeserverCircuitBreaker {
     }
 }
 
+impl RedisOps for HomeserverCircuitBreaker {}
+
 /// Number of consecutive failures before opening the circuit.
 const FAILURE_THRESHOLD: u32 = 5;
 
@@ -44,10 +45,6 @@ const FAILURE_THRESHOLD: u32 = 5;
 const DEFAULT_COOLDOWN_SECS: u64 = 300; // 5 minutes
 
 impl HomeserverCircuitBreaker {
-    fn redis_key(hs_id: &str) -> String {
-        format!("Homeserver:Circuit:Breaker:{hs_id}")
-    }
-
     fn now_secs() -> u64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -58,36 +55,17 @@ impl HomeserverCircuitBreaker {
     /// Loads the circuit breaker for a homeserver from Redis.
     /// Returns `None` if no record exists (treated as Closed).
     pub async fn get(hs_id: &str) -> RedisResult<Option<Self>> {
-        let key = Self::redis_key(hs_id);
-        let mut conn = get_redis_conn().await?;
-        let raw: Option<String> = conn.get(&key).await?;
-
-        match raw {
-            Some(data) => {
-                let cb: Self = serde_json::from_str(&data)
-                    .map_err(|e| RedisError::DeserializationFailed(Box::new(e)))?;
-                Ok(Some(cb))
-            }
-            None => Ok(None),
-        }
+        Self::try_from_index_json(&[hs_id], None).await
     }
 
     /// Persists the circuit breaker state to Redis.
     async fn save(&self, hs_id: &str) -> RedisResult<()> {
-        let key = Self::redis_key(hs_id);
-        let data = serde_json::to_string(self)
-            .map_err(|e| RedisError::SerializationFailed(Box::new(e)))?;
-        let mut conn = get_redis_conn().await?;
-        conn.set::<_, _, ()>(&key, &data).await?;
-        Ok(())
+        self.put_index_json(&[hs_id], None, None).await
     }
 
     /// Removes the circuit breaker record from Redis (resets to default Closed).
     pub async fn delete(hs_id: &str) -> RedisResult<()> {
-        let key = Self::redis_key(hs_id);
-        let mut conn = get_redis_conn().await?;
-        conn.del::<_, ()>(&key).await?;
-        Ok(())
+        Self::remove_from_index_multiple_json(&[&[hs_id]]).await
     }
 
     /// Returns the effective state of a homeserver's circuit, applying time-based transitions.
