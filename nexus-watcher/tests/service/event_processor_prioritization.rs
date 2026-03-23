@@ -4,6 +4,7 @@ use crate::service::utils::{create_mock_event_processors, setup, MockEventProces
 use anyhow::Result;
 use nexus_common::models::homeserver::Homeserver;
 use nexus_common::types::DynError;
+use nexus_watcher::service::hs_backoff::HsBackoff;
 use nexus_watcher::service::EventProcessorRunner;
 use nexus_watcher::service::TEventProcessorRunner;
 use pubky_app_specs::PubkyId;
@@ -23,6 +24,7 @@ async fn test_event_processor_runner_default_homeserver_excluded() -> Result<(),
         files_path: PathBuf::from("/tmp/nexus-watcher-test"),
         tracer_name: String::from("unit-test-hs-list-test"),
         moderation: Arc::new(default_moderation_tests()),
+        hs_backoff: HsBackoff::new(),
     };
 
     // Persist the homeservers

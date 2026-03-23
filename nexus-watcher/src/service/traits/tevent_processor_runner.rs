@@ -5,6 +5,7 @@ use tokio::sync::watch::Receiver;
 use tracing::{debug, error, info, warn};
 
 use crate::service::{
+    hs_backoff::HsBackoff,
     stats::{ProcessedStats, ProcessorRunStatus, RunAllProcessorsStats},
     traits::{tevent_processor::RunError, TEventProcessor},
 };
@@ -33,6 +34,17 @@ pub trait TEventProcessorRunner: Send + Sync {
     /// via [`TEventProcessorRunner::run_default_homeserver`].
     async fn external_homeservers_by_priority(&self) -> Result<Vec<String>, DynError>;
 
+    /// Returns an optional backoff tracker for homeservers.
+    ///
+    /// When provided, homeservers that have recently failed (error, panic, timeout,
+    /// or build failure) will be temporarily skipped with exponential backoff.
+    /// A single success resets the backoff for that homeserver.
+    ///
+    /// The default implementation returns `None` (no backoff).
+    fn backoff(&self) -> Option<&HsBackoff> {
+        None
+    }
+
     /// Creates and returns a new event processor instance for the specified homeserver.
     ///
     /// # Parameters
@@ -50,20 +62,32 @@ pub trait TEventProcessorRunner: Send + Sync {
     ///
     /// # Returns
     /// Considers the values of [TEventProcessorRunner::homeservers_by_priority].
+    /// Backed-off homeservers (see [`TEventProcessorRunner::backoff`]) are excluded.
     /// Depending on [TEventProcessorRunner::monitored_homeservers_limit], only a subset of this list may be returned.
     async fn pre_run_external_homeservers(&self) -> Result<Vec<String>, DynError> {
         let hs_ids = self.external_homeservers_by_priority().await?;
+        let hs_ids = match self.backoff() {
+            Some(backoff) => backoff.filter_backed_off(hs_ids),
+            None => hs_ids,
+        };
         let max_index = std::cmp::min(self.monitored_homeservers_limit(), hs_ids.len());
         Ok(hs_ids[..max_index].to_vec())
     }
 
-    /// Post-processing of the run results
+    /// Post-processing of the run results.
+    ///
+    /// Updates the backoff tracker (if present) so that failing homeservers are
+    /// temporarily skipped on subsequent cycles.
     async fn post_run_external_homeservers(&self, stats: RunAllProcessorsStats) -> ProcessedStats {
         for individual_run_stat in &stats.stats {
             let hs_id = &individual_run_stat.hs_id;
             let duration = individual_run_stat.duration;
             let status = &individual_run_stat.status;
             debug!("Event processor run for HS {hs_id}: duration {duration:?}, status {status:?}");
+        }
+
+        if let Some(backoff) = self.backoff() {
+            backoff.update_from_stats(&stats);
         }
 
         let count_ok = stats.count_ok();

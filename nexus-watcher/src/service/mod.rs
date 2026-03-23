@@ -1,4 +1,5 @@
 mod constants;
+pub mod hs_backoff;
 mod processor;
 mod processor_runner;
 mod stats;
