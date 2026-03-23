@@ -2,9 +2,6 @@
 //!
 //! Periodic task that resolves each user's homeserver and persists
 //! the `(:User)-[:HOSTED_BY]->(:Homeserver)` relationship in Neo4j.
-//!
-//! On resolution failure the task logs a warning and continues to the
-//! next user without changing the processing order.
 
 use nexus_common::db::{
     exec_single_row, fetch_key_from_graph, queries, GraphResult, PubkyConnector,
