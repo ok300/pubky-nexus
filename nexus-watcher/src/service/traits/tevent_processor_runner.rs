@@ -1,8 +1,8 @@
 use std::{sync::Arc, time::Instant};
 
-use nexus_common::models::circuit_breaker::HomeserverCircuitBreaker;
 use nexus_common::types::DynError;
 use tokio::sync::watch::Receiver;
+use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 
 use crate::service::{
@@ -122,46 +122,54 @@ pub trait TEventProcessorRunner: Send + Sync {
     /// # Returns
     /// Statistics about the event processor run results, summarized as [`RunAllProcessorsStats`]
     async fn run_external_homeservers(&self) -> Result<ProcessedStats, DynError> {
-        let hs_ids = self.pre_run_external_homeservers().await?;
+        const MAX_CONCURRENCY: usize = 20;
 
+        let hs_ids = self.pre_run_external_homeservers().await?;
         let mut run_stats = RunAllProcessorsStats::default();
+        let mut join_set = JoinSet::new();
 
         for hs_id in hs_ids {
             if *self.shutdown_rx().borrow() {
-                info!("Shutdown detected in homeserver {hs_id}, exiting run_external_homeservers loop");
-                break; // Exit loop
+                info!("Shutdown detected, stopping run_external_homeservers");
+                break;
             }
 
-            let t0 = Instant::now();
-            let status = match self.build(hs_id.clone()).await {
-                Ok(event_processor) => match event_processor.run().await {
-                    Ok(_) => ProcessorRunStatus::Ok,
-                    Err(RunError::Internal(_)) => ProcessorRunStatus::Error,
-                    Err(RunError::Panicked) => ProcessorRunStatus::Panic,
-                    Err(RunError::TimedOut) => ProcessorRunStatus::Timeout,
-                },
+            // Drain completed tasks when at capacity
+            while join_set.len() >= MAX_CONCURRENCY {
+                if let Some(result) = join_set.join_next().await {
+                    match result {
+                        Ok((hs_id, duration, status)) => run_stats.add_run_result(hs_id, duration, status),
+                        Err(e) => warn!("Event processor task panicked: {e:?}"),
+                    }
+                }
+            }
+
+            match self.build(hs_id.clone()).await {
+                Ok(event_processor) => {
+                    join_set.spawn(async move {
+                        let t0 = Instant::now();
+                        let status = match event_processor.run().await {
+                            Ok(_) => ProcessorRunStatus::Ok,
+                            Err(RunError::Internal(_)) => ProcessorRunStatus::Error,
+                            Err(RunError::Panicked) => ProcessorRunStatus::Panic,
+                            Err(RunError::TimedOut) => ProcessorRunStatus::Timeout,
+                        };
+                        (hs_id, Instant::now().duration_since(t0), status)
+                    });
+                }
                 Err(e) => {
                     error!("Failed to build event processor for homeserver: {hs_id}: {e}");
-                    ProcessorRunStatus::FailedToBuild
-                }
-            };
-            let duration = Instant::now().duration_since(t0);
-
-            // Update circuit breaker based on run outcome
-            match status {
-                ProcessorRunStatus::Ok => {
-                    if let Err(e) = HomeserverCircuitBreaker::record_success(&hs_id).await {
-                        warn!("Failed to record circuit breaker success for {hs_id}: {e}");
-                    }
-                }
-                _ => {
-                    if let Err(e) = HomeserverCircuitBreaker::record_failure(&hs_id).await {
-                        warn!("Failed to record circuit breaker failure for {hs_id}: {e}");
-                    }
+                    run_stats.add_run_result(hs_id, std::time::Duration::ZERO, ProcessorRunStatus::FailedToBuild);
                 }
             }
+        }
 
-            run_stats.add_run_result(hs_id, duration, status);
+        // Drain remaining tasks
+        while let Some(result) = join_set.join_next().await {
+            match result {
+                Ok((hs_id, duration, status)) => run_stats.add_run_result(hs_id, duration, status),
+                Err(e) => warn!("Event processor task panicked: {e:?}"),
+            }
         }
 
         let processed_stats = self.post_run_external_homeservers(run_stats).await;
