@@ -33,12 +33,10 @@ pub async fn run(ttl_ms: u64) -> Result<(), DynError> {
     Ok(())
 }
 
-/// Fetches user IDs whose homeserver mapping is stale or missing.
-///
-/// A mapping is considered stale when its `resolved_at` timestamp is older
-/// than `ttl_ms` milliseconds ago.
+/// Fetches user IDs whose homeserver mapping is stale or missing
 async fn get_users_needing_resolution(ttl_ms: u64) -> GraphResult<Vec<String>> {
-    let query = queries::get::get_users_needing_hs_resolution(ttl_ms);
+    // Limit max number of users to resolve per tick
+    let query = queries::get::get_users_needing_hs_resolution(ttl_ms, 50);
     let maybe_user_ids = fetch_key_from_graph(query, "user_ids").await?;
     Ok(maybe_user_ids.unwrap_or_default())
 }

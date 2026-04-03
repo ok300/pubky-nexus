@@ -277,7 +277,9 @@ pub fn get_all_homeservers_with_active_users() -> Query {
 
 /// Retrieves user IDs whose homeserver mapping is stale
 /// (`resolved_at` is older than `ttl_ms`) or missing (no `HOSTED_BY` edge).
-pub fn get_users_needing_hs_resolution(ttl_ms: u64) -> Query {
+///
+/// Results are capped to `batch_size` to avoid unbounded work per resolver tick.
+pub fn get_users_needing_hs_resolution(ttl_ms: u64, batch_size: u64) -> Query {
     Query::new(
         "get_users_needing_hs_resolution",
         "MATCH (u:User)
@@ -287,9 +289,12 @@ pub fn get_users_needing_hs_resolution(ttl_ms: u64) -> Query {
          WHERE r IS NULL
             OR r.resolved_at IS NULL
             OR r.resolved_at < (timestamp() - $ttl_ms)
-         RETURN collect(u.id) AS user_ids",
+         WITH u.id AS uid
+         LIMIT $batch_size
+         RETURN collect(uid) AS user_ids",
     )
     .param("ttl_ms", ttl_ms as i64)
+    .param("batch_size", batch_size as i64)
 }
 
 /// Retrieves all user IDs hosted on a given homeserver.
