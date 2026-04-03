@@ -107,20 +107,20 @@ impl Homeserver {
         Ok(())
     }
 
-    /// Retrieves all homeservers from the graph.
+    /// Returns all HS IDs with at least one active user, sorted by user count descending.
     ///
     /// # Returns
-    /// A list of all known homeserver IDs.
+    /// A list of active homeserver IDs.
     ///
     /// # Errors
-    /// Throws an error if no homeservers are found.
-    pub async fn get_all_from_graph() -> GraphResult<Vec<String>> {
-        let query = queries::get::get_all_homeservers();
+    /// Returns an error if no active homeservers are found.
+    pub async fn get_all_active_from_graph() -> GraphResult<Vec<String>> {
+        let query = queries::get::get_all_homeservers_with_active_users();
         let maybe_hs_ids = fetch_key_from_graph(query, "homeservers_list").await?;
         let hs_ids: Vec<String> = maybe_hs_ids.unwrap_or_default();
 
         match hs_ids.is_empty() {
-            true => Err(GraphError::Generic("No homeservers found in graph".into())),
+            true => Err(GraphError::Generic("No active HSs found in graph".into())),
             false => Ok(hs_ids),
         }
     }
@@ -141,6 +141,7 @@ impl Homeserver {
     /// ### Arguments
     ///
     /// - `referenced_user_id`: The URI of the referenced user
+    #[tracing::instrument(name = "homeserver.ingest", skip_all)]
     pub async fn maybe_ingest_for_user(referenced_user_id: &str) -> ModelResult<()> {
         let pubky = PubkyConnector::get().map_err(ModelError::from_generic)?;
 
@@ -178,7 +179,7 @@ mod tests {
 
     #[tokio_shared_rt::test(shared)]
     async fn test_put_to_get_from_graph() -> Result<(), DynError> {
-        StackManager::setup("unit-hs-test", &StackConfig::default()).await?;
+        StackManager::setup(&StackConfig::default()).await?;
 
         let keys = Keypair::random();
         let id = PubkyId::try_from(&keys.public_key().to_z32())?;
@@ -201,7 +202,7 @@ mod tests {
 
     #[tokio_shared_rt::test(shared)]
     async fn test_put_to_get_from_index() -> Result<(), DynError> {
-        StackManager::setup("unit-hs-test", &StackConfig::default()).await?;
+        StackManager::setup(&StackConfig::default()).await?;
 
         let keys = Keypair::random();
         let id = PubkyId::try_from(&keys.public_key().to_z32())?;

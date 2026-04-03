@@ -1,17 +1,16 @@
 pub mod backoff;
 mod constants;
-mod processor;
-mod processor_runner;
-mod stats;
+pub mod indexer;
+pub mod runner;
+pub mod stats;
 mod task_runner;
-mod traits;
+pub mod user_hs_resolver;
 
 /// Module exports
 pub use constants::{PROCESSING_TIMEOUT_SECS, WATCHER_CONFIG_FILE_NAME};
-pub use processor::EventProcessor;
-pub use processor_runner::EventProcessorRunner;
+pub use indexer::{HsEventProcessor, KeyBasedEventProcessor, TEventProcessor};
+pub use runner::{HsEventProcessorRunner, KeyBasedEventProcessorRunner, TEventProcessorRunner};
 pub(crate) use task_runner::{run_periodic_tasks, PeriodicTask};
-pub use traits::{TEventProcessor, TEventProcessorRunner};
 
 use crate::service::task_runner::task_results_into_result;
 use crate::NexusWatcherBuilder;
@@ -73,13 +72,16 @@ impl NexusWatcher {
 
     /// Starts the Nexus Watcher with parallel periodic task loops.
     ///
-    /// Currently runs two tasks:
+    /// Currently runs three tasks:
     /// 1. **Default homeserver**: Processes events from the default homeserver defined in [`WatcherConfig`].
     /// 2. **External homeservers**: Processes events from all external monitored homeservers, excluding the default.
+    /// 3. **User HS resolver**: Resolves each user's homeserver and persists `HOSTED_BY` relationships.
     ///
-    /// All tasks share the same tick interval ([`WatcherConfig::watcher_sleep`]) and listen for
-    /// the shutdown signal to exit gracefully. If any task panics, an internal cancellation
-    /// signal is sent so that sibling tasks can finish their current iteration and exit.
+    /// The event-processing tasks share the same tick interval ([`WatcherConfig::watcher_sleep`]),
+    /// while the HS resolver uses its own interval ([`WatcherConfig::hs_resolver_sleep`]).
+    /// All tasks listen for the shutdown signal to exit gracefully. If any task panics,
+    /// an internal cancellation signal is sent so that sibling tasks can finish their
+    /// current iteration and exit.
     pub async fn start(shutdown_rx: Receiver<bool>, config: WatcherConfig) -> Result<(), DynError> {
         debug!(?config, "Running NexusWatcher with ");
 
@@ -87,32 +89,29 @@ impl NexusWatcher {
         Homeserver::persist_if_unknown(config_hs).await?;
 
         let watcher_sleep = config.watcher_sleep;
-        let ev_processor_runner = EventProcessorRunner::from_config(&config, shutdown_rx.clone());
-        let ev_processor_runner = Arc::new(ev_processor_runner);
+        let hs_resolver_sleep = config.hs_resolver_sleep;
+        let hs_resolver_ttl = config.hs_resolver_ttl;
 
-        let default_hs_runner = ev_processor_runner.clone();
-        let external_hs_runner = ev_processor_runner.clone();
-
-        // TODO Incorporate in EventProcessorRunner::from_config above, remove backoff arg from run_external_homeservers
-        let backoff = crate::service::backoff::HomeserverBackoff::new(
-            config.initial_backoff_secs,
-            config.max_backoff_secs,
-        );
+        let hs_runner = Arc::new(HsEventProcessorRunner::from_config(
+            &config,
+            shutdown_rx.clone(),
+        ));
+        let key_based_runner = Arc::new(KeyBasedEventProcessorRunner::from_config(
+            &config,
+            shutdown_rx.clone(),
+        ));
 
         let tasks = vec![
             PeriodicTask::new("default-homeserver", watcher_sleep, move || {
-                let runner = default_hs_runner.clone();
-                async move { runner.run_default_homeserver().await.map(|_| ()) }
+                let runner = hs_runner.clone();
+                async move { runner.run().await.map(|_| ()) }
             }),
             PeriodicTask::new("external-homeservers", watcher_sleep, move || {
-                let runner = external_hs_runner.clone();
-                let mut backoff = backoff.clone();
-                async move {
-                    runner
-                        .run_external_homeservers(&mut backoff)
-                        .await
-                        .map(|_| ())
-                }
+                let runner = key_based_runner.clone();
+                async move { runner.run().await.map(|_| ()) }
+            }),
+            PeriodicTask::new("user-hs-resolver", hs_resolver_sleep, move || async move {
+                user_hs_resolver::run(hs_resolver_ttl).await
             }),
         ];
 
