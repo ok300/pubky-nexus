@@ -1,10 +1,10 @@
 use crate::service::utils::setup;
 use crate::utils::MockEventHandler;
 use anyhow::Result;
-use chrono::Utc;
 use nexus_common::config::EventRetryConfig;
 use nexus_common::db::kv::RedisOps;
 use nexus_common::models::event::{EventProcessorError, EventType};
+use nexus_common::utils::current_time_millis;
 use nexus_watcher::events::retry::{
     InMemoryRetryStore, RedisRetryStore, RetryEvent, RetryEventIndexKey, RetryProcessor, RetryStore,
 };
@@ -18,11 +18,6 @@ use tokio::sync::watch;
 
 /// Test user ID - valid 52-character z32 Pubky ID
 const TEST_USER_ID: &str = "uo7jgkykft4885n8cruizwy6khw71mnu5pq3ay9i8pw1ymcn85ko";
-
-fn current_time_millis() -> u64 {
-    u64::try_from(Utc::now().timestamp_millis())
-        .expect("system clock must be at or after Unix epoch")
-}
 
 /// Test helper to create an EventRetryConfig with custom values
 fn create_test_config(

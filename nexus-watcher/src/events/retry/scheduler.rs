@@ -1,17 +1,12 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+use nexus_common::utils::current_time_millis;
 use tracing::warn;
 
 use nexus_common::models::event::{Event, EventProcessorError};
 use nexus_common::WatcherConfig;
 
 use super::{RedisRetryStore, RetryEvent, RetryEventIndexKey, RetryStore};
-
-fn current_time_millis() -> Result<u64, EventProcessorError> {
-    u64::try_from(Utc::now().timestamp_millis())
-        .map_err(|_| EventProcessorError::internal_error("System clock is before Unix epoch"))
-}
 
 /// Initial backoff durations applied when an event first lands on the retry queue.
 /// Subsequent reschedules use exponential backoff inside [`super::RetryProcessor`].
@@ -71,7 +66,7 @@ impl RetryScheduler {
     ) -> Result<(), EventProcessorError> {
         let key: RetryEventIndexKey = event.uri.clone();
 
-        let next_retry_at = current_time_millis()?.saturating_add(initial_backoff_ms);
+        let next_retry_at = current_time_millis().saturating_add(initial_backoff_ms);
         let retry_event =
             RetryEvent::new(event.event_type.clone(), event.uri.clone(), next_retry_at);
 

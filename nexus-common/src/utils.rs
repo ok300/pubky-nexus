@@ -1,4 +1,11 @@
+use chrono::Utc;
 use tokio::sync::watch::Receiver;
+
+/// Returns the current Unix timestamp in milliseconds as `u64`.
+pub fn current_time_millis() -> u64 {
+    u64::try_from(Utc::now().timestamp_millis())
+        .expect("system clock must be at or after Unix epoch")
+}
 
 /// Creates a watch channel that can be used for shutdown signalling.
 ///

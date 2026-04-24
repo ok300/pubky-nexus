@@ -5,6 +5,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use nexus_common::config::EventRetryConfig;
 use nexus_common::models::event::{Event, EventProcessorError, ParseResult};
+use nexus_common::utils::current_time_millis;
 use nexus_common::WatcherConfig;
 use tokio::sync::watch::Receiver;
 use tracing::{debug, info, warn};
@@ -17,11 +18,6 @@ use crate::service::indexer::TEventProcessor;
 
 /// Maximum number of retry events to fetch per batch to avoid memory spikes
 const RETRY_BATCH_SIZE: usize = 100;
-
-fn current_time_millis() -> Result<u64, EventProcessorError> {
-    u64::try_from(Utc::now().timestamp_millis())
-        .map_err(|_| EventProcessorError::internal_error("System clock is before Unix epoch"))
-}
 
 /// Processor for retrying events that failed due to missing dependencies
 pub struct RetryProcessor {
@@ -57,7 +53,7 @@ impl TEventProcessor for RetryProcessor {
     }
 
     async fn run_internal(self: Arc<Self>) -> Result<(), EventProcessorError> {
-        let now = current_time_millis()?;
+        let now = current_time_millis();
 
         loop {
             let events = self.fetch_ready_events(now).await?;
@@ -214,7 +210,7 @@ impl RetryProcessor {
         // Use retry_count (not new_retry_count) so first retry uses 2^0 * initial = initial
         let backoff_secs = self.calculate_backoff(retry_event.retry_count, initial, max);
 
-        let now = current_time_millis()?;
+        let now = current_time_millis();
         let next_retry_at = now.saturating_add(backoff_secs.saturating_mul(1000));
 
         let mut updated_event = retry_event.clone();
