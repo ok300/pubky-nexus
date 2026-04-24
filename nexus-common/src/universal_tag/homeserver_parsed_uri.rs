@@ -80,27 +80,32 @@ impl TryFrom<&str> for HomeserverParsedUri {
         // First, try parsing as a standard pubky-app-specs ParsedUri (pubky.app path).
         // This handles URL validation, scheme checking, user_id extraction, and resource parsing
         // for pubky.app URIs in one call.
-        if let Ok(parsed_uri) = ParsedUri::try_from(uri) {
-            return Ok(HomeserverParsedUri::AppSpec {
-                user_id: parsed_uri.user_id,
-                resource: parsed_uri.resource,
-            });
-        }
+        // Capture the error so it can be included in diagnostics if the fallback also fails.
+        let app_spec_err = match ParsedUri::try_from(uri) {
+            Ok(parsed_uri) => {
+                return Ok(HomeserverParsedUri::AppSpec {
+                    user_id: parsed_uri.user_id,
+                    resource: parsed_uri.resource,
+                });
+            }
+            Err(e) => e,
+        };
 
         // If ParsedUri::try_from failed, the URI might be from a different app.
         // Try parsing as a universal tag URI: pubky://<user_id>/pub/<app>/tags/<tag_id>
-        if let Some(info) = try_parse_app_tag_path(uri) {
-            return Ok(HomeserverParsedUri::UniversalTag {
+        match try_parse_app_tag_path(uri) {
+            Ok(info) => Ok(HomeserverParsedUri::UniversalTag {
                 user_id: info.user_id,
                 app: info.app,
                 resource: Resource::Tag(info.tag_id.clone()),
                 tag_id: info.tag_id,
-            });
+            }),
+            Err(tag_path_err) => Err(format!(
+                "URI is not a recognized pubky-app-specs path or universal tag path: {uri}; \
+                 pubky-app-specs parse error: {app_spec_err}; \
+                 universal tag parse error: {tag_path_err}"
+            )),
         }
-
-        Err(format!(
-            "URI is not a recognized pubky-app-specs path or universal tag path: {uri}"
-        ))
     }
 }
 

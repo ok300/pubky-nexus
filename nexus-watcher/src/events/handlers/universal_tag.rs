@@ -16,7 +16,7 @@ pub async fn try_handle(
     event_type: &EventType,
     uri: &str,
 ) -> Option<Result<(), EventProcessorError>> {
-    let info = try_parse_app_tag_path(uri)?;
+    let info = try_parse_app_tag_path(uri).ok()?;
     tracing::Span::current().record("app_type", info.app.as_str());
 
     debug!(
