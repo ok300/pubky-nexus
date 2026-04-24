@@ -25,7 +25,7 @@ pub struct RetryEvent {
     /// Original URI - blob is re-fetched on retry
     pub event_uri: String,
     /// Unix ms - when to next attempt (exponential backoff)
-    pub next_retry_at: i64,
+    pub next_retry_at: u64,
 }
 
 #[async_trait]
@@ -37,7 +37,7 @@ impl RedisOps for RetryEvent {
 
 impl RetryEvent {
     /// Creates a new RetryEvent
-    pub fn new(event_type: EventType, event_uri: String, next_retry_at: i64) -> Self {
+    pub fn new(event_type: EventType, event_uri: String, next_retry_at: u64) -> Self {
         Self {
             retry_count: 0,
             event_type,
@@ -148,7 +148,7 @@ impl RetryEvent {
     /// A vector of (index_key, score) pairs; empty when no events are ready.
     #[tracing::instrument(name = "retry.index.fetch_ready", skip_all)]
     pub async fn fetch_ready(
-        now: i64,
+        now: u64,
         limit: Option<usize>,
     ) -> Result<Vec<(RetryEventIndexKey, f64)>, EventProcessorError> {
         Self::try_from_index_sorted_set(

@@ -64,7 +64,7 @@ fn create_test_retry_event(
     post_id: &str,
     event_type: EventType,
     retry_count: u32,
-    next_retry_at: i64,
+    next_retry_at: u64,
 ) -> RetryEvent {
     let event_uri = post_uri_builder(TEST_USER_ID.to_string(), post_id.to_string());
     RetryEvent {
@@ -118,7 +118,7 @@ async fn test_backoff_first_retry_uses_initial_value() -> Result<()> {
     let store = new_in_memory_store();
 
     // Create and store a retry event with retry_count = 0
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(
         post_id,
         EventType::Put,
@@ -177,7 +177,7 @@ async fn test_backoff_exponential_growth() -> Result<()> {
     let store = new_in_memory_store();
 
     // Create and store a retry event with retry_count = 3
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(
         post_id,
         EventType::Put,
@@ -239,7 +239,7 @@ async fn test_infrastructure_error_at_max_retries_does_not_dead_letter() -> Resu
     let store = new_in_memory_store();
 
     // Create a retry event already at max_retries (10)
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(
         post_id,
         EventType::Put,
@@ -305,7 +305,7 @@ async fn test_backoff_capped_at_max() -> Result<()> {
 
     // Create and store a retry event with retry_count = 6
     // 2^6 * 60 = 3840, which exceeds max_backoff_secs (3600), so it should be capped
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(
         post_id,
         EventType::Put,
@@ -364,7 +364,7 @@ async fn test_retry_success_removes_from_queue() -> Result<()> {
     let store = new_in_memory_store();
 
     // Create and store a retry event
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(
         post_id,
         EventType::Put,
@@ -416,7 +416,7 @@ async fn test_retry_404_removes_from_queue() -> Result<()> {
     let store = new_in_memory_store();
 
     // Create and store a retry event
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(post_id, EventType::Put, 0, now - 1000);
     store.put(&resource_key, &retry_event).await?;
 
@@ -469,7 +469,7 @@ async fn test_transient_error_schedules_retry() -> Result<()> {
     let store = new_in_memory_store();
 
     // Create and store a retry event with retry_count = 0
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(
         post_id,
         EventType::Put,
@@ -538,7 +538,7 @@ async fn test_missing_dependency_schedules_retry() -> Result<()> {
     let store = new_in_memory_store();
 
     // Create and store a retry event with retry_count = 0
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(
         post_id,
         EventType::Put,
@@ -606,7 +606,7 @@ async fn test_dead_letter_after_max_transient_retries() -> Result<()> {
     let store = new_in_memory_store();
 
     // Create and store a retry event that has exceeded max_retries (10)
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(
         post_id,
         EventType::Put,
@@ -663,7 +663,7 @@ async fn test_dead_letter_after_max_dependency_retries() -> Result<()> {
     let store = new_in_memory_store();
 
     // Create and store a retry event that has exceeded max_dependency_retries (50)
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(
         post_id,
         EventType::Put,
@@ -721,7 +721,7 @@ async fn test_stale_sorted_set_entry_cleaned_up() -> Result<()> {
     let resource_key = create_resource_key(post_id);
 
     // Manually add a stale entry to the sorted set only (no JSON state).
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     RetryEvent::put_index_sorted_set(
         &["events"],
         &[(now as f64, &resource_key)],
@@ -767,7 +767,7 @@ async fn test_shutdown_interrupts_batch() -> Result<()> {
 
     // Create multiple retry events
     let num_events = 5;
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let store = new_in_memory_store();
 
     for i in 0..num_events {
@@ -830,7 +830,7 @@ async fn test_infrastructure_error_stops_batch() -> Result<()> {
 
     // Create multiple retry events
     let num_events = 3;
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let store = new_in_memory_store();
 
     for i in 0..num_events {
@@ -954,7 +954,7 @@ async fn test_del_event_retry_success() -> Result<()> {
     let store = new_in_memory_store();
 
     // Create a DEL retry event
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(post_id, EventType::Del, 0, now - 1000);
     store.put(&resource_key, &retry_event).await?;
 
@@ -993,7 +993,7 @@ async fn test_non_retryable_error_removes_event() -> Result<()> {
     let resource_key = create_resource_key(post_id);
     let store = new_in_memory_store();
 
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(post_id, EventType::Put, 0, now - 1000);
     store.put(&resource_key, &retry_event).await?;
 
@@ -1038,7 +1038,7 @@ async fn test_future_events_not_picked_up() -> Result<()> {
     let store = new_in_memory_store();
 
     // Create a retry event scheduled far in the future
-    let now = Utc::now().timestamp_millis();
+    let now = Utc::now().timestamp_millis() as u64;
     let retry_event = create_test_retry_event(
         post_id,
         EventType::Put,

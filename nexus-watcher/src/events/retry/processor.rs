@@ -52,7 +52,7 @@ impl TEventProcessor for RetryProcessor {
     }
 
     async fn run_internal(self: Arc<Self>) -> Result<(), EventProcessorError> {
-        let now = Utc::now().timestamp_millis();
+        let now = Utc::now().timestamp_millis() as u64;
 
         loop {
             let events = self.fetch_ready_events(now).await?;
@@ -94,7 +94,7 @@ impl RetryProcessor {
     /// store; stale-entry cleanup is the store's responsibility.
     async fn fetch_ready_events(
         &self,
-        now: i64,
+        now: u64,
     ) -> Result<Vec<(RetryEventIndexKey, RetryEvent)>, EventProcessorError> {
         self.store.fetch_ready(now, Some(RETRY_BATCH_SIZE)).await
     }
@@ -209,8 +209,8 @@ impl RetryProcessor {
         // Use retry_count (not new_retry_count) so first retry uses 2^0 * initial = initial
         let backoff_secs = self.calculate_backoff(retry_event.retry_count, initial, max);
 
-        let now = Utc::now().timestamp_millis();
-        let next_retry_at = now + (backoff_secs as i64 * 1000);
+        let now = Utc::now().timestamp_millis() as u64;
+        let next_retry_at = now.saturating_add(backoff_secs.saturating_mul(1000));
 
         let mut updated_event = retry_event.clone();
         updated_event.retry_count = new_retry_count;
@@ -218,8 +218,10 @@ impl RetryProcessor {
 
         self.store.put(index_key, &updated_event).await?;
 
-        let retry_time =
-            DateTime::<Utc>::from_timestamp_millis(next_retry_at).unwrap_or_else(Utc::now);
+        let retry_time = i64::try_from(next_retry_at)
+            .ok()
+            .and_then(DateTime::<Utc>::from_timestamp_millis)
+            .unwrap_or_else(Utc::now);
         info!(
             "Rescheduling {} for {:?} (backoff: {}s, retry_count: {})",
             retry_event.event_uri, retry_time, backoff_secs, new_retry_count

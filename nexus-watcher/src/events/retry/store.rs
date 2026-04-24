@@ -39,7 +39,7 @@ pub trait RetryStore: Send + Sync {
     /// caller always receives fully-resolved `(key, event)` pairs.
     async fn fetch_ready(
         &self,
-        now: i64,
+        now: u64,
         limit: Option<usize>,
     ) -> Result<Vec<(RetryEventIndexKey, RetryEvent)>, EventProcessorError>;
 }
@@ -85,7 +85,7 @@ impl RetryStore for RedisRetryStore {
 
     async fn fetch_ready(
         &self,
-        now: i64,
+        now: u64,
         limit: Option<usize>,
     ) -> Result<Vec<(RetryEventIndexKey, RetryEvent)>, EventProcessorError> {
         let key_score_pairs = RetryEvent::fetch_ready(now, limit).await?;
@@ -167,7 +167,7 @@ impl RetryStore for InMemoryRetryStore {
 
     async fn fetch_ready(
         &self,
-        now: i64,
+        now: u64,
         limit: Option<usize>,
     ) -> Result<Vec<(RetryEventIndexKey, RetryEvent)>, EventProcessorError> {
         let guard = self.inner.lock().await;
