@@ -19,7 +19,10 @@ pub struct InitialBackoff {
 impl InitialBackoff {
     pub fn from_config(config: &WatcherConfig) -> Self {
         Self {
-            missing_dep_ms: config.retry.initial_missing_dep_backoff_secs.saturating_mul(1000),
+            missing_dep_ms: config
+                .retry
+                .initial_missing_dep_backoff_secs
+                .saturating_mul(1000),
             transient_ms: config.retry.initial_backoff_secs.saturating_mul(1000),
         }
     }
@@ -63,7 +66,8 @@ impl RetryScheduler {
     ) -> Result<(), EventProcessorError> {
         let key: RetryEventIndexKey = event.uri.clone();
 
-        let next_retry_at = (Utc::now().timestamp_millis() as u64).saturating_add(initial_backoff_ms);
+        let next_retry_at =
+            (Utc::now().timestamp_millis() as u64).saturating_add(initial_backoff_ms);
         let retry_event =
             RetryEvent::new(event.event_type.clone(), event.uri.clone(), next_retry_at);
 
