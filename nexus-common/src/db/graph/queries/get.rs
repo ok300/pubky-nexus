@@ -164,6 +164,19 @@ pub fn get_tag_target(user_id: &str, tag_id: &str, app: Option<&str>) -> Query {
     query
 }
 
+/// Returns whether the tagger still has another TAGGED relationship with the
+/// same label on the same Resource.
+pub fn has_other_resource_tag_by_label(user_id: &str, resource_id: &str, label: &str) -> Query {
+    Query::new(
+        "has_other_resource_tag_by_label",
+        "MATCH (:User {id: $user_id})-[tag:TAGGED {label: $label}]->(:Resource {id: $resource_id})
+         RETURN COUNT(tag) > 1 AS has_other_tag",
+    )
+    .param("user_id", user_id)
+    .param("resource_id", resource_id)
+    .param("label", label)
+}
+
 // Get all the tags/taggers that a post has received (used for edit/delete notifications)
 pub fn get_post_tags(author_id: &str, post_id: &str) -> Query {
     Query::new(

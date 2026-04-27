@@ -3,7 +3,7 @@ use crate::events::EventProcessorError;
 
 use chrono::Utc;
 use nexus_common::db::kv::{RedisResult, ScoreAction};
-use nexus_common::db::{fetch_row_from_graph, queries, OperationOutcome, RedisOps};
+use nexus_common::db::{fetch_key_from_graph, fetch_row_from_graph, queries, OperationOutcome, RedisOps};
 use nexus_common::models::homeserver::Homeserver;
 use nexus_common::models::notification::Notification;
 use nexus_common::models::post::search::PostsByTagSearch;
@@ -634,13 +634,22 @@ async fn del_sync_resource(
     tag_label: &str,
     app: Option<&str>,
 ) -> Result<(), EventProcessorError> {
+    let has_other_tag = fetch_key_from_graph(
+        queries::get::has_other_resource_tag_by_label(tagger_id.as_str(), resource_id, tag_label),
+        "has_other_tag",
+    )
+    .await?
+    .unwrap_or(false);
+
     // Step 1: Decrement scores and remove tagger from sets
     let score_results = tokio::join!(
         TagResource::update_index_score(resource_id, None, tag_label, ScoreAction::Decrement(1.0)),
         async {
-            TagResource(vec![tagger_id.to_string()])
-                .del_from_index(resource_id, None, tag_label)
-                .await?;
+            if !has_other_tag {
+                TagResource(vec![tagger_id.to_string()])
+                    .del_from_index(resource_id, None, tag_label)
+                    .await?;
+            }
             Ok::<(), EventProcessorError>(())
         },
         ResourceStream::update_global_taggers_count(resource_id, ScoreAction::Decrement(1.0)),
