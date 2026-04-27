@@ -28,6 +28,15 @@ pub async fn sync_put(
     tagger_id: PubkyId,
     tag_id: String,
 ) -> Result<(), EventProcessorError> {
+    sync_put_inner(tag, tagger_id, tag_id, None).await
+}
+
+async fn sync_put_inner(
+    tag: PubkyAppTag,
+    tagger_id: PubkyId,
+    tag_id: String,
+    app: Option<&str>,
+) -> Result<(), EventProcessorError> {
     debug!("Indexing new tag: {} -> {}", tagger_id, tag_id);
 
     // Parse the embeded URI to extract author_id and post_id using parse_tagged_post_uri
@@ -40,12 +49,14 @@ pub async fn sync_put(
         Resource::Post(post_id) => {
             // Place the tag on post
             put_sync_post(
-                tagger_id, user_id, &post_id, &tag_id, &tag.label, &tag.uri, indexed_at,
+                tagger_id, user_id, &post_id, &tag_id, &tag.label, &tag.uri, indexed_at, app,
             )
             .await
         }
         // If no post_id in the tagged URI, we place tag to a user.
-        Resource::User => put_sync_user(tagger_id, user_id, &tag_id, &tag.label, indexed_at).await,
+        Resource::User => {
+            put_sync_user(tagger_id, user_id, &tag_id, &tag.label, indexed_at, app).await
+        }
         other => Err(EventProcessorError::generic(format!(
             "The tagged resource is not Post or User, instead is: {other:?}"
         ))),
@@ -69,8 +80,11 @@ pub async fn sync_put_resource(
     let category = classify_uri(&tag.uri);
     match category {
         UriCategory::InternalKnown => {
-            // The tagged URI is a known Post/User — delegate to existing flow
-            sync_put(tag, tagger_id, tag_id).await
+            // The tagged URI is a known Post/User — delegate to existing flow,
+            // but propagate `app` so the TAGGED edge carries the app namespace.
+            // Without this, the symmetric DEL path (which passes Some(app)) would
+            // fail to locate the edge and silently no-op.
+            sync_put_inner(tag, tagger_id, tag_id, Some(&app)).await
         }
         UriCategory::InternalUnknown | UriCategory::External => {
             let (normalized, scheme) =
@@ -193,6 +207,7 @@ async fn put_sync_resource(
 /// - `post_uri` - A `String` representing the homeserver URI of the tagged post.
 /// - `indexed_at` - A 64-bit integer representing the timestamp when the post was indexed.
 ///
+#[allow(clippy::too_many_arguments)]
 async fn put_sync_post(
     tagger_user_id: PubkyId,
     author_id: PubkyId,
@@ -201,6 +216,7 @@ async fn put_sync_post(
     tag_label: &str,
     post_uri: &str,
     indexed_at: i64,
+    app: Option<&str>,
 ) -> Result<(), EventProcessorError> {
     match TagPost::put_to_graph(
         &tagger_user_id,
@@ -209,6 +225,7 @@ async fn put_sync_post(
         tag_id,
         tag_label,
         indexed_at,
+        app,
     )
     .await?
     {
@@ -321,6 +338,7 @@ async fn put_sync_user(
     tag_id: &str,
     tag_label: &str,
     indexed_at: i64,
+    app: Option<&str>,
 ) -> Result<(), EventProcessorError> {
     match TagUser::put_to_graph(
         &tagger_user_id,
@@ -329,6 +347,7 @@ async fn put_sync_user(
         tag_id,
         tag_label,
         indexed_at,
+        app,
     )
     .await?
     {
