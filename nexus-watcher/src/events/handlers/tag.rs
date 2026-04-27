@@ -3,7 +3,9 @@ use crate::events::EventProcessorError;
 
 use chrono::Utc;
 use nexus_common::db::kv::{RedisResult, ScoreAction};
-use nexus_common::db::{fetch_key_from_graph, fetch_row_from_graph, queries, OperationOutcome, RedisOps};
+use nexus_common::db::{
+    fetch_key_from_graph, fetch_row_from_graph, queries, OperationOutcome, RedisOps,
+};
 use nexus_common::models::homeserver::Homeserver;
 use nexus_common::models::notification::Notification;
 use nexus_common::models::post::search::PostsByTagSearch;
