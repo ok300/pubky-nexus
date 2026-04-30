@@ -21,52 +21,80 @@ use crate::service::utils::{
 async fn key_based_processor_skips_unrecognized_events() -> Result<(), DynError> {
     setup().await?;
 
+    // Create a homeserver with one hosted user to resolve during the run.
     let (_hs_keypair, homeserver) = create_homeserver().await?;
     let user_id = create_user_on_homeserver(&homeserver).await?;
+
+    // Return one unrecognized event followed by one valid pubky.app event for the same user.
     let source = Arc::new(MockKeyBasedEventSource::default().with_events(vec![vec![
         stream_event(1, &user_id, "/pub/other.app/profile.json")?,
         stream_event(2, &user_id, "/pub/pubky.app/profile.json")?,
     ]]));
+
     let handler = create_mock_handler(Ok(()), None);
     let processor = processor(homeserver, handler.clone(), source.clone());
 
     processor.run().await?;
 
+    // The unrecognized event is skipped, while the valid event is handled.
     assert_eq!(handler.get_handle_count(), 1);
+
+    // The processor fetched events only for the hosted user.
     assert_eq!(source.calls(), vec![user_id]);
 
     Ok(())
 }
 
 #[tokio_shared_rt::test(shared)]
-async fn key_based_processor_continues_to_next_user_after_unrecognized_event_then_rejects_wrong_user_event(
+async fn key_based_processor_stops_mismatched_user_stream_but_continues_other_users(
 ) -> Result<(), DynError> {
     setup().await?;
 
+    // Create a homeserver with two hosted users to resolve during the run.
     let (_hs_keypair, homeserver) = create_homeserver().await?;
-    let first_user_id = create_user_on_homeserver(&homeserver).await?;
-    create_user_on_homeserver(&homeserver).await?;
-    let different_user_id = PubkyId::try_from(Keypair::random().public_key().to_z32().as_str())?;
-    let different_user_id = different_user_id.to_string();
-    let source = Arc::new(MockKeyBasedEventSource::default().with_events(vec![
-        vec![stream_event(
-            1,
-            &first_user_id,
-            "/pub/other.app/profile.json",
-        )?],
-        vec![
-            stream_event(2, &different_user_id, "/pub/pubky.app/profile.json")?,
-            stream_event(3, &different_user_id, "/pub/pubky.app/posts/after-mismatch")?,
-        ],
+    let user_a_id = create_user_on_homeserver(&homeserver).await?;
+    let user_b_id = create_user_on_homeserver(&homeserver).await?;
+
+    // This ID is not hosted on the homeserver; it simulates a malicious or broken event source.
+    let user_c_id = Keypair::random().public_key().to_z32();
+
+    // For the first hosted user, return an event whose URI belongs to a different user.
+    // The following valid event for the same hosted user must not be processed after that mismatch.
+    let source = Arc::new(MockKeyBasedEventSource::default().with_user_events(vec![
+        (
+            user_a_id.clone(),
+            vec![
+                stream_event(1, &user_c_id, "/pub/pubky.app/profile.json")?,
+                stream_event(2, &user_a_id, "/pub/pubky.app/profile.json")?,
+            ],
+        ),
+        // For the second hosted user, return a valid event to prove processing continues.
+        (
+            user_b_id.clone(),
+            vec![stream_event(3, &user_b_id, "/pub/pubky.app/profile.json")?],
+        ),
     ]));
+
+    // Wire the processor to the user-keyed mock source and handler.
     let handler = create_mock_handler(Ok(()), None);
     let processor = processor(homeserver, handler.clone(), source.clone());
 
+    // Run one processing pass. User-level mismatches should be logged and skipped, not fail the run.
     let result = processor.run().await;
 
     assert!(result.is_ok());
-    assert_eq!(handler.get_handle_count(), 0);
-    assert_eq!(source.calls().len(), 2);
+
+    // Both hosted users were fetched from the same homeserver despite the first user's mismatch.
+    let calls = source.calls();
+    assert_eq!(calls.len(), 2);
+    assert!(calls.contains(&user_a_id));
+    assert!(calls.contains(&user_b_id));
+
+    // Only the other user's event was handled; the valid event after the mismatch was skipped.
+    let handled_uris = handler.get_handled_uris();
+    assert_eq!(handled_uris.len(), 1);
+    assert!(handled_uris.iter().all(|uri| !uri.contains(&user_a_id)));
+    assert!(handled_uris.iter().any(|uri| uri.contains(&user_b_id)));
 
     Ok(())
 }
