@@ -3,12 +3,10 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use nexus_common::db::{PubkyConnector, RedisOps};
-use nexus_common::models::event::{
-    Event, EventProcessorError, EventType, ParseResult, UserIdMismatch,
-};
+use nexus_common::models::event::{Event, EventProcessorError, UserIdMismatch};
 use nexus_common::models::homeserver::Homeserver;
 use nexus_common::models::user::{user_hs_cursor_key, UserDetails};
-use pubky::{EventCursor, PublicKey};
+use pubky::{Event as StreamEvent, EventCursor, PublicKey};
 use pubky_app_specs::PubkyId;
 use tokio::sync::watch::Receiver;
 use tracing::{debug, error, info};
@@ -26,7 +24,7 @@ pub trait KeyBasedEventSource: Send + Sync + 'static {
         user_pk: &PublicKey,
         cursor: EventCursor,
         limit: u16,
-    ) -> Result<Vec<(u64, String)>, EventProcessorError>;
+    ) -> Result<Vec<StreamEvent>, EventProcessorError>;
 }
 
 #[derive(Default)]
@@ -40,7 +38,7 @@ impl KeyBasedEventSource for PubkyKeyBasedEventSource {
         user_pk: &PublicKey,
         cursor: EventCursor,
         limit: u16,
-    ) -> Result<Vec<(u64, String)>, EventProcessorError> {
+    ) -> Result<Vec<StreamEvent>, EventProcessorError> {
         let pubky = PubkyConnector::get()?;
         let mut stream = pubky
             .event_stream_for(hs_pk)
@@ -53,11 +51,7 @@ impl KeyBasedEventSource for PubkyKeyBasedEventSource {
 
         let mut events = Vec::new();
         while let Some(result) = stream.next().await {
-            let stream_event = result?;
-            let event_type: EventType = stream_event.event_type.into();
-            let uri = stream_event.resource.to_pubky_url();
-
-            events.push((stream_event.cursor.id(), format!("{event_type} {uri}")));
+            events.push(result?);
         }
 
         Ok(events)
@@ -190,7 +184,7 @@ impl KeyBasedEventProcessor {
         user_pk: &PublicKey,
         cursor: EventCursor,
     ) -> Result<(), EventProcessorError> {
-        let raw_events = self
+        let stream_events = self
             .event_source
             .fetch_events(hs_pk, user_pk, cursor, self.limit)
             .await?;
@@ -199,20 +193,22 @@ impl KeyBasedEventProcessor {
         let mut latest_cursor: Option<u64> = None;
 
         let result: Result<(), EventProcessorError> = async {
-            for (cursor_id, event_line) in raw_events {
+            for stream_event in stream_events {
                 if *self.shutdown_rx.borrow() {
                     debug!(hs_id = %hs_id, user = %user_id, "Shutdown detected; exiting event loop");
                     break;
                 }
 
-                match Event::parse_event(&event_line, self.files_path.clone()) {
-                    Ok(ParseResult::Parsed(event)) => {
+                let cursor_id = stream_event.cursor.id();
+
+                match Event::from_stream_event(&stream_event, self.files_path.clone()) {
+                    Ok(Some(event)) => {
                         // Validate event user before handling, since we received it from a 3rd party HS
                         Self::validate_user_id(hs_id, &event, PubkyId::from(user_pk.clone()))?;
 
                         self.handle_event(&event).await?;
                     }
-                    Ok(ParseResult::Skipped | ParseResult::UnrecognizedUri { .. }) => {
+                    Ok(None) => {
                         /* resource not handled by Nexus, skip */
                     }
                     Err(e) => {

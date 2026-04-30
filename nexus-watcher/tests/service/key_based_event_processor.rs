@@ -10,7 +10,7 @@ use nexus_common::types::DynError;
 use nexus_watcher::events::retry::{InitialBackoff, RetryScheduler};
 use nexus_watcher::events::EventHandler;
 use nexus_watcher::service::indexer::{KeyBasedEventProcessor, TEventProcessor};
-use pubky::Keypair;
+use pubky::{Event as StreamEvent, EventCursor, EventType, Keypair, PubkyResource, PublicKey};
 use pubky_app_specs::PubkyId;
 
 use crate::service::utils::{
@@ -18,18 +18,14 @@ use crate::service::utils::{
 };
 
 #[tokio_shared_rt::test(shared)]
-async fn key_based_processor_skips_parse_errors_and_continues_user_events() -> Result<(), DynError>
-{
+async fn key_based_processor_skips_unrecognized_events() -> Result<(), DynError> {
     setup().await?;
 
     let (_hs_keypair, homeserver) = create_homeserver().await?;
     let user_id = create_user_on_homeserver(&homeserver).await?;
     let source = Arc::new(MockKeyBasedEventSource::default().with_events(vec![vec![
-        (1, "NOT_AN_EVENT".into()),
-        (
-            2,
-            format!("PUT pubky://{user_id}/pub/pubky.app/profile.json"),
-        ),
+        stream_event(1, &user_id, "/pub/other.app/profile.json")?,
+        stream_event(2, &user_id, "/pub/pubky.app/profile.json")?,
     ]]));
     let handler = create_mock_handler(Ok(()), None);
     let processor = processor(homeserver, handler.clone(), source.clone());
@@ -43,25 +39,24 @@ async fn key_based_processor_skips_parse_errors_and_continues_user_events() -> R
 }
 
 #[tokio_shared_rt::test(shared)]
-async fn key_based_processor_continues_to_next_user_after_parse_error_then_rejects_wrong_user_event(
+async fn key_based_processor_continues_to_next_user_after_unrecognized_event_then_rejects_wrong_user_event(
 ) -> Result<(), DynError> {
     setup().await?;
 
     let (_hs_keypair, homeserver) = create_homeserver().await?;
-    create_user_on_homeserver(&homeserver).await?;
+    let first_user_id = create_user_on_homeserver(&homeserver).await?;
     create_user_on_homeserver(&homeserver).await?;
     let different_user_id = PubkyId::try_from(Keypair::random().public_key().to_z32().as_str())?;
+    let different_user_id = different_user_id.to_string();
     let source = Arc::new(MockKeyBasedEventSource::default().with_events(vec![
-        vec![(1, "NOT_AN_EVENT".into())],
+        vec![stream_event(
+            1,
+            &first_user_id,
+            "/pub/other.app/profile.json",
+        )?],
         vec![
-            (
-                2,
-                format!("PUT pubky://{different_user_id}/pub/pubky.app/profile.json"),
-            ),
-            (
-                3,
-                format!("PUT pubky://{different_user_id}/pub/pubky.app/posts/after-mismatch"),
-            ),
+            stream_event(2, &different_user_id, "/pub/pubky.app/profile.json")?,
+            stream_event(3, &different_user_id, "/pub/pubky.app/posts/after-mismatch")?,
         ],
     ]));
     let handler = create_mock_handler(Ok(()), None);
@@ -100,6 +95,16 @@ async fn create_user_on_homeserver(homeserver: &Homeserver) -> Result<String, Dy
     exec_single_row(queries::put::set_user_homeserver(&user_id, &homeserver.id)).await?;
 
     Ok(user_id.to_string())
+}
+
+fn stream_event(cursor: u64, user_id: &str, path: &str) -> Result<StreamEvent, DynError> {
+    let user_pk: PublicKey = user_id.parse()?;
+
+    Ok(StreamEvent {
+        event_type: EventType::Delete,
+        resource: PubkyResource::new(user_pk, path)?,
+        cursor: EventCursor::new(cursor),
+    })
 }
 
 fn processor(
