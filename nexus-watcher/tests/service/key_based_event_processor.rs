@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use chrono::Utc;
-use nexus_common::db::{exec_single_row, queries};
+use nexus_common::db::{exec_single_row, queries, RedisOps};
 use nexus_common::models::homeserver::Homeserver;
-use nexus_common::models::user::UserDetails;
+use nexus_common::models::user::{user_hs_cursor_key, UserDetails};
 use nexus_common::types::DynError;
 use nexus_watcher::events::retry::{InitialBackoff, RetryScheduler};
 use nexus_watcher::events::EventHandler;
@@ -77,6 +77,7 @@ async fn key_based_processor_stops_mismatched_user_stream_but_continues_other_us
 
     // Wire the processor to the user-keyed mock source and handler.
     let handler = create_mock_handler(Ok(()), None);
+    let hs_id = homeserver.id.to_string();
     let processor = processor(homeserver, handler.clone(), source.clone());
 
     // Run one processing pass. User-level mismatches should be logged and skipped, not fail the run.
@@ -95,6 +96,16 @@ async fn key_based_processor_stops_mismatched_user_stream_but_continues_other_us
     assert_eq!(handled_uris.len(), 1);
     assert!(handled_uris.iter().all(|uri| !uri.contains(&user_a_id)));
     assert!(handled_uris.iter().any(|uri| uri.contains(&user_b_id)));
+
+    // The mismatched user's cursor must not be persisted: the bad event is the first in the
+    // batch, so `latest_cursor` is never set and no write to the USER_HS_CURSOR set should occur.
+    let cursor_a =
+        UserDetails::check_sorted_set_member(None, &user_hs_cursor_key(&user_a_id), &[&hs_id])
+            .await?;
+    assert!(
+        cursor_a.is_none(),
+        "user_a cursor must not be advanced past the mismatched event, got {cursor_a:?}",
+    );
 
     Ok(())
 }
