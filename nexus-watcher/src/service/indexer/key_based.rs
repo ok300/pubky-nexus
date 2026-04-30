@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use nexus_common::db::{PubkyConnector, RedisOps};
-use nexus_common::models::event::{Event, EventProcessorError, UserIdMismatch};
+use nexus_common::models::event::{
+    Event, EventProcessorError, EventType, ParseResult, UserIdMismatch,
+};
 use nexus_common::models::homeserver::Homeserver;
 use nexus_common::models::user::{user_hs_cursor_key, UserDetails};
 use pubky::{EventCursor, PublicKey};
@@ -16,6 +18,61 @@ use crate::events::retry::RetryScheduler;
 use crate::events::EventHandler;
 use crate::service::user_hs_resolver;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyBasedRawEvent {
+    pub cursor_id: u64,
+    pub event_line: String,
+}
+
+#[async_trait::async_trait]
+pub trait KeyBasedEventSource: Send + Sync + 'static {
+    async fn fetch_events(
+        &self,
+        hs_pk: &PublicKey,
+        user_pk: &PublicKey,
+        cursor: EventCursor,
+        limit: u16,
+    ) -> Result<Vec<KeyBasedRawEvent>, EventProcessorError>;
+}
+
+#[derive(Default)]
+pub struct PubkyKeyBasedEventSource;
+
+#[async_trait::async_trait]
+impl KeyBasedEventSource for PubkyKeyBasedEventSource {
+    async fn fetch_events(
+        &self,
+        hs_pk: &PublicKey,
+        user_pk: &PublicKey,
+        cursor: EventCursor,
+        limit: u16,
+    ) -> Result<Vec<KeyBasedRawEvent>, EventProcessorError> {
+        let pubky = PubkyConnector::get()?;
+        let mut stream = pubky
+            .event_stream_for(hs_pk)
+            .add_users(vec![(user_pk, Some(cursor))])?
+            .limit(limit)
+            .path("/pub/")
+            .subscribe()
+            .await
+            .inspect_err(|e| error!("Failed to subscribe to event stream: {e:?}"))?;
+
+        let mut events = Vec::new();
+        while let Some(result) = stream.next().await {
+            let stream_event = result?;
+            let event_type: EventType = stream_event.event_type.into();
+            let uri = stream_event.resource.to_pubky_url();
+
+            events.push(KeyBasedRawEvent {
+                cursor_id: stream_event.cursor.id(),
+                event_line: format!("{event_type} {uri}"),
+            });
+        }
+
+        Ok(events)
+    }
+}
+
 /// Event processor for non-default HSs, where the user-specific `/events-stream` endpoint is used
 pub struct KeyBasedEventProcessor {
     /// The HS endpoint this processor fetches events from
@@ -26,6 +83,7 @@ pub struct KeyBasedEventProcessor {
     pub limit: u16,
     pub files_path: PathBuf,
     pub event_handler: Arc<dyn EventHandler>,
+    pub event_source: Arc<dyn KeyBasedEventSource>,
     /// Scheduler used to enqueue failed events onto the retry queue
     pub retry_scheduler: Arc<RetryScheduler>,
     pub shutdown_rx: Receiver<bool>,
@@ -141,37 +199,33 @@ impl KeyBasedEventProcessor {
         user_pk: &PublicKey,
         cursor: EventCursor,
     ) -> Result<(), EventProcessorError> {
-        let pubky = PubkyConnector::get()?;
-        let mut stream = pubky
-            .event_stream_for(hs_pk)
-            .add_users(vec![(user_pk, Some(cursor))])?
-            .limit(self.limit)
-            .path("/pub/")
-            .subscribe()
-            .await
-            .inspect_err(|e| error!("Failed to subscribe to event stream: {e:?}"))?;
+        let raw_events = self
+            .event_source
+            .fetch_events(hs_pk, user_pk, cursor, self.limit)
+            .await?;
 
         let user_id = user_pk.z32();
         let mut latest_cursor: Option<u64> = None;
 
         let result: Result<(), EventProcessorError> = async {
-            while let Some(result) = stream.next().await {
+            for raw_event in raw_events {
                 if *self.shutdown_rx.borrow() {
                     debug!(hs_id = %hs_id, user = %user_id, "Shutdown detected; exiting event loop");
                     break;
                 }
 
-                let stream_event = result?;
-                let cursor_id = stream_event.cursor.id();
+                let cursor_id = raw_event.cursor_id;
 
-                match Event::from_stream_event(&stream_event, self.files_path.clone()) {
-                    Ok(Some(event)) => {
+                match Event::parse_event(&raw_event.event_line, self.files_path.clone()) {
+                    Ok(ParseResult::Parsed(event)) => {
                         // Validate event user before handling, since we received it from a 3rd party HS
                         Self::validate_user_id(hs_id, &event, PubkyId::from(user_pk.clone()))?;
 
                         self.handle_event(&event).await?;
                     }
-                    Ok(None) => { /* resource not handled by Nexus, skip */ }
+                    Ok(ParseResult::Skipped | ParseResult::UnrecognizedUri { .. }) => {
+                        /* resource not handled by Nexus, skip */
+                    }
                     Err(e) => {
                         error!(
                             hs_id = %hs_id,

@@ -2,7 +2,9 @@ mod homeserver;
 mod key_based;
 
 pub use homeserver::HsEventProcessor;
-pub use key_based::KeyBasedEventProcessor;
+pub use key_based::{
+    KeyBasedEventProcessor, KeyBasedEventSource, KeyBasedRawEvent, PubkyKeyBasedEventSource,
+};
 use nexus_common::models::event::ParseResult;
 use std::{fmt::Display, path::PathBuf, sync::Arc, time::Duration};
 
