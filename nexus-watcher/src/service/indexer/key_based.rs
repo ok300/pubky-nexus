@@ -207,9 +207,7 @@ impl KeyBasedEventProcessor {
 
                         self.handle_event(&event).await?;
                     }
-                    Ok(None) => {
-                        /* resource not handled by Nexus, skip */
-                    }
+                    Ok(None) => { /* resource not handled by Nexus, skip */ }
                     Err(e) => {
                         error!(
                             hs_id = %hs_id,
