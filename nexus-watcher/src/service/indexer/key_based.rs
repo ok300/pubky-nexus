@@ -27,7 +27,6 @@ pub trait KeyBasedEventSource: Send + Sync + 'static {
     ) -> Result<Vec<StreamEvent>, EventProcessorError>;
 }
 
-#[derive(Default)]
 pub struct PubkyKeyBasedEventSource;
 
 #[async_trait::async_trait]
