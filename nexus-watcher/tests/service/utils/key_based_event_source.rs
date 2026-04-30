@@ -1,31 +1,24 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use nexus_common::models::event::EventProcessorError;
-use nexus_watcher::service::{KeyBasedEventSource, KeyBasedRawEvent};
+use nexus_watcher::service::indexer::KeyBasedEventSource;
 use pubky::{EventCursor, PublicKey};
 
 #[derive(Default)]
 pub struct MockKeyBasedEventSource {
-    /// Events returned for a specific user ID when the mock is keyed by user.
-    events_by_user: Mutex<HashMap<String, Vec<KeyBasedRawEvent>>>,
-    /// Events returned by fetch order, useful when user resolution order is not important.
-    events_by_call: Mutex<VecDeque<Vec<KeyBasedRawEvent>>>,
-    /// User IDs requested from the mock, in the order `fetch_events` was called.
+    /// Event batches returned in fetch order.
+    /// Useful when user ordering is not important and tests only care about processor flow.
+    events: Mutex<VecDeque<Vec<(u64, String)>>>,
+
+    /// User IDs requested from the mock, in fetch order.
+    /// Useful for asserting the processor continued to, or stopped before, specific users.
     calls: Mutex<Vec<String>>,
 }
 
 impl MockKeyBasedEventSource {
-    pub fn with_user_events(self, user_id: &str, events: Vec<KeyBasedRawEvent>) -> Self {
-        self.events_by_user
-            .lock()
-            .unwrap()
-            .insert(user_id.to_string(), events);
-        self
-    }
-
-    pub fn with_call_events(self, events: Vec<Vec<KeyBasedRawEvent>>) -> Self {
-        *self.events_by_call.lock().unwrap() = events.into();
+    pub fn with_events(self, events: Vec<Vec<(u64, String)>>) -> Self {
+        *self.events.lock().unwrap() = events.into();
         self
     }
 
@@ -42,20 +35,9 @@ impl KeyBasedEventSource for MockKeyBasedEventSource {
         user_pk: &PublicKey,
         _cursor: EventCursor,
         _limit: u16,
-    ) -> Result<Vec<KeyBasedRawEvent>, EventProcessorError> {
-        let user_id = user_pk.z32();
-        self.calls.lock().unwrap().push(user_id.clone());
+    ) -> Result<Vec<(u64, String)>, EventProcessorError> {
+        self.calls.lock().unwrap().push(user_pk.z32());
 
-        if let Some(events) = self.events_by_call.lock().unwrap().pop_front() {
-            return Ok(events);
-        }
-
-        Ok(self
-            .events_by_user
-            .lock()
-            .unwrap()
-            .get(&user_id)
-            .cloned()
-            .unwrap_or_default())
+        Ok(self.events.lock().unwrap().pop_front().unwrap_or_default())
     }
 }

@@ -7,9 +7,8 @@ use nexus_common::types::DynError;
 use nexus_watcher::events::retry::{InitialBackoff, RedisRetryStore, RetryScheduler, RetryStore};
 use nexus_watcher::events::{DefaultEventHandler, EventHandler};
 use nexus_watcher::service::backoff::HomeserverBackoff;
-use nexus_watcher::service::{
-    KeyBasedEventProcessorRunner, PubkyKeyBasedEventSource, TEventProcessorRunner,
-};
+use nexus_watcher::service::indexer::PubkyKeyBasedEventSource;
+use nexus_watcher::service::{KeyBasedEventProcessorRunner, TEventProcessorRunner};
 use pubky_app_specs::PubkyId;
 use std::path::PathBuf;
 use std::sync::Arc;

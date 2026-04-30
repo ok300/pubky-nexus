@@ -18,12 +18,6 @@ use crate::events::retry::RetryScheduler;
 use crate::events::EventHandler;
 use crate::service::user_hs_resolver;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KeyBasedRawEvent {
-    pub cursor_id: u64,
-    pub event_line: String,
-}
-
 #[async_trait::async_trait]
 pub trait KeyBasedEventSource: Send + Sync + 'static {
     async fn fetch_events(
@@ -32,7 +26,7 @@ pub trait KeyBasedEventSource: Send + Sync + 'static {
         user_pk: &PublicKey,
         cursor: EventCursor,
         limit: u16,
-    ) -> Result<Vec<KeyBasedRawEvent>, EventProcessorError>;
+    ) -> Result<Vec<(u64, String)>, EventProcessorError>;
 }
 
 #[derive(Default)]
@@ -46,7 +40,7 @@ impl KeyBasedEventSource for PubkyKeyBasedEventSource {
         user_pk: &PublicKey,
         cursor: EventCursor,
         limit: u16,
-    ) -> Result<Vec<KeyBasedRawEvent>, EventProcessorError> {
+    ) -> Result<Vec<(u64, String)>, EventProcessorError> {
         let pubky = PubkyConnector::get()?;
         let mut stream = pubky
             .event_stream_for(hs_pk)
@@ -63,10 +57,7 @@ impl KeyBasedEventSource for PubkyKeyBasedEventSource {
             let event_type: EventType = stream_event.event_type.into();
             let uri = stream_event.resource.to_pubky_url();
 
-            events.push(KeyBasedRawEvent {
-                cursor_id: stream_event.cursor.id(),
-                event_line: format!("{event_type} {uri}"),
-            });
+            events.push((stream_event.cursor.id(), format!("{event_type} {uri}")));
         }
 
         Ok(events)
@@ -208,15 +199,13 @@ impl KeyBasedEventProcessor {
         let mut latest_cursor: Option<u64> = None;
 
         let result: Result<(), EventProcessorError> = async {
-            for raw_event in raw_events {
+            for (cursor_id, event_line) in raw_events {
                 if *self.shutdown_rx.borrow() {
                     debug!(hs_id = %hs_id, user = %user_id, "Shutdown detected; exiting event loop");
                     break;
                 }
 
-                let cursor_id = raw_event.cursor_id;
-
-                match Event::parse_event(&raw_event.event_line, self.files_path.clone()) {
+                match Event::parse_event(&event_line, self.files_path.clone()) {
                     Ok(ParseResult::Parsed(event)) => {
                         // Validate event user before handling, since we received it from a 3rd party HS
                         Self::validate_user_id(hs_id, &event, PubkyId::from(user_pk.clone()))?;
