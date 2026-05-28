@@ -76,6 +76,28 @@ pub struct KeyBasedEventProcessor {
     pub shutdown_rx: Receiver<bool>,
 }
 
+struct ProcessUserError {
+    source: EventProcessorError,
+    abort_homeserver: bool,
+}
+
+impl ProcessUserError {
+    fn user(source: EventProcessorError) -> Self {
+        let abort_homeserver = source.is_infrastructure();
+        Self {
+            source,
+            abort_homeserver,
+        }
+    }
+
+    fn abort_homeserver(source: EventProcessorError) -> Self {
+        Self {
+            source,
+            abort_homeserver: true,
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl TEventProcessor for KeyBasedEventProcessor {
     fn files_path(&self) -> &PathBuf {
@@ -121,22 +143,22 @@ impl TEventProcessor for KeyBasedEventProcessor {
 
             if let Err(err) = self.process_user(&hs_pk, &hs_id, user_pk, *cursor).await {
                 let user_id = user_pk.z32();
-                if err.is_infrastructure() {
+                if err.abort_homeserver {
                     error!(
                         hs_id = %hs_id,
                         user = %user_id,
                         action = "abort_hs",
-                        error = ?err,
-                        "Infrastructure error while processing user; aborting homeserver run",
+                        error = ?err.source,
+                        "Homeserver-aborting error while processing user; aborting homeserver run",
                     );
-                    return Err(err);
+                    return Err(err.source);
                 }
 
                 error!(
                     hs_id = %hs_id,
                     user = %user_id,
                     action = "skip_user",
-                    error = ?err,
+                    error = ?err.source,
                     "Non-infrastructure user error; continuing with next user",
                 );
             }
@@ -191,10 +213,11 @@ impl KeyBasedEventProcessor {
         hs_id: &str,
         user_pk: &PublicKey,
         cursor: EventCursor,
-    ) -> Result<(), EventProcessorError> {
+    ) -> Result<(), ProcessUserError> {
         let stream_events = self
             .fetch_user_events_with_429_backoff(hs_pk, hs_id, user_pk, cursor)
-            .await?;
+            .await
+            .map_err(ProcessUserError::user)?;
 
         let user_id = user_pk.z32();
         let (latest_cursor, result) = self
@@ -202,18 +225,21 @@ impl KeyBasedEventProcessor {
             .await;
 
         if let Some(cursor_val) = latest_cursor {
-            if let Err(write_err) = Self::write_user_cursor(&user_id, hs_id, cursor_val).await {
-                error!(
-                    hs_id = %hs_id,
-                    user = %user_id,
-                    cursor = cursor_val,
-                    cursor_write_error = ?write_err,
-                    "Best-effort cursor persist failed; events may be re-processed on next run",
-                );
-            }
+            Self::write_user_cursor(&user_id, hs_id, cursor_val)
+                .await
+                .inspect_err(|write_err| {
+                    error!(
+                        hs_id = %hs_id,
+                        user = %user_id,
+                        cursor = cursor_val,
+                        cursor_write_error = ?write_err,
+                        "Cursor persist failed; aborting homeserver run",
+                    );
+                })
+                .map_err(ProcessUserError::abort_homeserver)?;
         }
 
-        result
+        result.map_err(ProcessUserError::user)
     }
 
     async fn fetch_user_events_with_429_backoff(

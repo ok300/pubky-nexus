@@ -224,6 +224,34 @@ async fn key_based_processor_propagates_cursor_read_errors() -> Result<(), DynEr
     Ok(())
 }
 
+/// Verifies Redis cursor write failures abort the homeserver run after event handling.
+#[tokio_shared_rt::test(shared)]
+async fn key_based_processor_propagates_cursor_write_errors() -> Result<(), DynError> {
+    setup().await?;
+
+    let (_hs_keypair, homeserver) = create_homeserver().await?;
+    let user_id = create_user_on_homeserver(&homeserver).await?;
+    let source = Arc::new(
+        MockKeyBasedEventSource::default()
+            .with_events(vec![vec![stream_event(
+                7,
+                &user_id,
+                "/pub/pubky.app/profile.json",
+            )?]])
+            .await,
+    );
+    let handler = Arc::new(CorruptCursorOnHandle::new(user_id.clone()));
+    let processor = processor(homeserver, handler.clone(), source.clone());
+
+    let err = processor.run().await.unwrap_err();
+
+    assert_internal_index_operation_failed(err);
+    assert_eq!(source.calls().await, vec![user_id]);
+    assert_eq!(handler.handle_count(), 1);
+
+    Ok(())
+}
+
 /// Verifies stored per-user cursors and configured limits are passed to the source.
 #[tokio_shared_rt::test(shared)]
 async fn key_based_processor_passes_stored_cursor_and_limit_to_source() -> Result<(), DynError> {
@@ -679,6 +707,38 @@ impl EventHandler for ShutdownOnFirstHandle {
             let _ = self.shutdown_tx.send(true);
         }
 
+        Ok(())
+    }
+}
+
+/// Test handler that changes the per-user cursor Redis key to a JSON value after handling.
+/// The following cursor ZADD must fail with a Redis type error.
+struct CorruptCursorOnHandle {
+    user_id: String,
+    handle_count: AtomicUsize,
+}
+
+impl CorruptCursorOnHandle {
+    fn new(user_id: String) -> Self {
+        Self {
+            user_id,
+            handle_count: AtomicUsize::new(0),
+        }
+    }
+
+    fn handle_count(&self) -> usize {
+        self.handle_count.load(Ordering::SeqCst)
+    }
+}
+
+#[async_trait::async_trait]
+impl EventHandler for CorruptCursorOnHandle {
+    async fn handle(&self, event: &Event) -> Result<(), EventProcessorError> {
+        self.handle_count.fetch_add(1, Ordering::SeqCst);
+        let cursor_key = user_hs_cursor_key(&self.user_id);
+        event
+            .put_index_json(&cursor_key, Some("Sorted".into()), None)
+            .await?;
         Ok(())
     }
 }
