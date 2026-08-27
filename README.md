@@ -5,7 +5,7 @@
 
 This is a change done by PR 1.
 
-This is a change added by PR 2.
+This is a change added by PR 2 and PR 3.
 
 # Pubky Nexus
 
