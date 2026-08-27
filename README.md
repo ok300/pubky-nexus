@@ -5,6 +5,8 @@
 
 This is a change done by PR 1.
 
+This is a change added by PR 2.
+
 # Pubky Nexus
 
 Pubky Nexus is the central bridge connecting Pubky homeservers with [Pubky-App’s](https://github.com/pubky/pubky-app) social clients. By aggregating events from homeservers into a rich social graph, Nexus transforms decentralized interactions into a high-performance, fully featured social-media-like API. It's designed to support Social-Semantic-Graph (SSG) inference, and more.
